@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
@@ -26,32 +26,40 @@ pub struct WSClientEvent {
 
 impl WSClientEvent {
     fn connected(client_id: u64, path: String) -> WSClientEvent {
-        WSClientEvent {client_id, is_connected: true, text_message: Some(path), binary_message: None}
+        WSClientEvent { client_id, is_connected: true, text_message: Some(path), binary_message: None }
     }
 
     fn disconnected(client_id: u64) -> WSClientEvent {
-        WSClientEvent {client_id, is_connected: false, text_message: None, binary_message: None}
+        WSClientEvent { client_id, is_connected: false, text_message: None, binary_message: None }
     }
 
     fn text(client_id: u64, data: Vec<u8>) -> WSClientEvent {
-        WSClientEvent {client_id, is_connected: true,
+        WSClientEvent {
+            client_id,
+            is_connected: true,
             text_message: Some(String::from_utf8(data).unwrap_or_default()),
-            binary_message: None}
+            binary_message: None,
+        }
     }
 
     fn binary(client_id: u64, data: Vec<u8>) -> WSClientEvent {
-        WSClientEvent {client_id, is_connected: true, text_message: None, binary_message: Some(data)}
+        WSClientEvent { client_id, is_connected: true, text_message: None, binary_message: Some(data) }
     }
 }
 
 pub struct WSServer {}
 
 enum WSOpcode {
-    Text = 1, Binary = 2, Close = 8, Ping = 9, Pong = 10,
+    Text = 1,
+    Binary = 2,
+    Close = 8,
+    Ping = 9,
+    Pong = 10,
 }
 
 const WSCOMMAND_HANDSHAKE_OPCODE: i8 = -1;
 const WSCOMMAND_CLOSE_OPCODE: i8 = -2;
+
 struct WSCommand {
     opcode: i8,
     data: Vec<u8>,
@@ -59,13 +67,12 @@ struct WSCommand {
 
 impl WSCommand {
     fn close() -> WSCommand {
-        WSCommand {opcode: WSCOMMAND_CLOSE_OPCODE, data: Vec::new()}
+        WSCommand { opcode: WSCOMMAND_CLOSE_OPCODE, data: Vec::new() }
     }
 }
 
 #[derive(Clone)]
 struct Context {
-    addresses: Arc<Mutex<HashSet<String>>>,
     senders: Arc<Mutex<HashMap<u64, Sender<WSCommand>>>>,
 }
 
@@ -75,10 +82,8 @@ impl WSServer {
         let tls_acceptor = TlsAcceptor::from(tls_config);
 
         let mut client_counter = 0_u64;
-        let addresses = HashSet::new();
         let senders = HashMap::new();
         let context = Context {
-            addresses: Arc::new(Mutex::new(addresses)),
             senders: Arc::new(Mutex::new(senders)),
         };
         let listener = TcpListener::bind(addr).await?;
@@ -94,41 +99,35 @@ impl WSServer {
         loop {
             let (stream, addr) = listener.accept().await?;
             let addr = format!("{}", addr.ip());
-            if context.addresses.lock().await.contains(&addr) {
-                debug!("Ignore already connected client {:?}", &addr);
-            } else {
-                match tls_acceptor.clone().accept(stream).await {
-                    Ok(stream) => {
-                        let client_id = client_counter;
-                        client_counter += 1;
-                        info!("Accepted connection from {:?}, client_id={client_counter}", &addr);
-                        //context.addresses.lock().await.insert(addr.clone());
-                        let (sender, receiver) = mpsc::channel(8);
-                        context.senders.lock().await.insert(client_id, sender.clone());
+            match tls_acceptor.clone().accept(stream).await {
+                Ok(stream) => {
+                    let client_id = client_counter;
+                    client_counter += 1;
+                    info!("Accepted connection from {:?}, client_id={client_counter}", &addr);
+                    let (sender, receiver) = mpsc::channel(8);
+                    context.senders.lock().await.insert(client_id, sender.clone());
 
-                        let (mut input, mut output) = tokio::io::split(stream);
-                        let sender_clone = sender.clone();
-                        let context_clone = context.clone();
-                        let events_clone = events_channel.clone();
-                        tokio::spawn(async move {
-                            match WSServer::reader(&mut input, client_id, &sender_clone, &events_clone).await {
-                                Ok((code, msg)) => {
-                                    info!("Client {:?} exit with code: {:?}, message: {:?}", &addr, code, msg);
-                                },
-                                Err(e) => {
-                                    error!("Client error: {:?}", e);
-                                }
+                    let (mut input, mut output) = tokio::io::split(stream);
+                    let sender_clone = sender.clone();
+                    let context_clone = context.clone();
+                    let events_clone = events_channel.clone();
+                    tokio::spawn(async move {
+                        match WSServer::reader(&mut input, client_id, &sender_clone, &events_clone).await {
+                            Ok((code, msg)) => {
+                                info!("Client {:?} exit with code: {:?}, message: {:?}", &addr, code, msg);
                             }
-                            WSServer::handle_client_close(&sender_clone, &addr, client_id,
-                                                          &events_clone, context_clone).await;
-                        });
-                        tokio::spawn(async move {
-                            WSServer::writer(&mut output, receiver).await;
-                        });
-                    }
-                    Err(e) => {
-                        error!("Failed to accept TLS: {:?}", e);
-                    }
+                            Err(e) => {
+                                error!("Client error: {:?}", e);
+                            }
+                        }
+                        WSServer::handle_client_close(&sender_clone, client_id, &events_clone, context_clone).await;
+                    });
+                    tokio::spawn(async move {
+                        WSServer::writer(&mut output, receiver).await;
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to accept TLS: {:?}", e);
                 }
             }
         }
@@ -138,9 +137,9 @@ impl WSServer {
         while let Some(event) = receiver.recv().await {
             if let Some(client_sender) = context.senders.lock().await.get(&event.client_id) {
                 if let Some(text) = event.text_message {
-                    client_sender.send(WSCommand {opcode: WSOpcode::Text as i8, data: text.into_bytes()}).await?;
+                    client_sender.send(WSCommand { opcode: WSOpcode::Text as i8, data: text.into_bytes() }).await?;
                 } else if let Some(data) = event.binary_message {
-                    client_sender.send(WSCommand {opcode: WSOpcode::Binary as i8, data}).await?;
+                    client_sender.send(WSCommand { opcode: WSOpcode::Binary as i8, data }).await?;
                 } else {
                     error!("Send command without text or data {:?}", &event);
                 }
@@ -151,12 +150,11 @@ impl WSServer {
         Ok(())
     }
 
-    async fn handle_client_close(client_sender: &Sender<WSCommand>, client_addr: &str, client_id: u64,
+    async fn handle_client_close(client_sender: &Sender<WSCommand>, client_id: u64,
                                  events_sender: &Sender<WSClientEvent>, context: Context) {
         if let Err(e) = events_sender.send(WSClientEvent::disconnected(client_id)).await {
             error!("Failed to channel disconnected event {:?}", e);
         }
-        context.addresses.lock().await.remove(client_addr);
         context.senders.lock().await.remove(&client_id);
         if let Err(e) = client_sender.send(WSCommand::close()).await {
             error!("Failed to channel close command: {:?}", e);
@@ -164,13 +162,13 @@ impl WSServer {
     }
 
     async fn reader<T>(stream: &mut T, client_id: u64, client_sender: &Sender<WSCommand>,
-                    events_sender: &Sender<WSClientEvent>) -> Result<(Option<u16>, Option<String>), Box<dyn Error>>
+                       events_sender: &Sender<WSClientEvent>) -> Result<(Option<u16>, Option<String>), Box<dyn Error>>
         where T: AsyncReadExt + Unpin {
         let handshake = HTTPServer::read_http_req(stream).await?;
         debug!("Handshake: {:?}", &handshake);
         let (path, handshake_response) = WSServer::parse_handshake(&handshake)?;
         debug!("Handshake response: {:?}", &handshake_response);
-        let command = WSCommand {opcode: WSCOMMAND_HANDSHAKE_OPCODE, data: handshake_response.into_bytes()};
+        let command = WSCommand { opcode: WSCOMMAND_HANDSHAKE_OPCODE, data: handshake_response.into_bytes() };
         client_sender.send(command).await?;
         if let Err(e) = events_sender.send(WSClientEvent::connected(client_id, path)).await {
             error!("Failed to channel connected event {:?}", e);
@@ -193,7 +191,7 @@ impl WSServer {
                 } else { None };
                 return Ok((code, msg));
             } else if opcode == WSOpcode::Ping as u8 {
-                let command = WSCommand {opcode: WSOpcode::Pong as i8, data: Vec::new() };
+                let command = WSCommand { opcode: WSOpcode::Pong as i8, data: Vec::new() };
                 client_sender.send(command).await?;
             }
         }
@@ -210,8 +208,7 @@ impl WSServer {
             return Err(Box::new(WSError::new(String::from("Message without mask"))));
         }
         let length = header1 & 0x7F;
-        let length = if length <= 125 { length as usize }
-        else if length == 126 {
+        let length = if length <= 125 { length as usize } else if length == 126 {
             stream.read_u16().await? as usize
         } else {
             stream.read_u64().await? as usize
@@ -292,12 +289,15 @@ impl WSServer {
 struct WSError {
     description: String,
 }
+
 impl WSError {
     fn new(description: String) -> WSError {
-        WSError {description}
+        WSError { description }
     }
 }
+
 impl Error for WSError {}
+
 impl fmt::Display for WSError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "WS Error: {:?}", &self.description)
