@@ -1,0 +1,11 @@
+[package]
+name = "easymund-audio-codec"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flacenc = "0.3.1"
+symphonia = {version = "0.5.3", features = ["flac"]}
+
+[dev-dependencies]
+rand = "0.8.5"

@@ -1,0 +1,13 @@
+/client-processor/target/
+/client-processor/Cargo.lock
+/client-processor/client-processor.iml
+/codec/target/
+/codec/Cargo.lock
+/codec/codec.iml
+/server/target/
+/server/log/
+/server/cert/
+/server/client_*
+/server/Cargo.lock
+/server/server.iml
+/.idea/
