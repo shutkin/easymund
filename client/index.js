@@ -26,7 +26,6 @@ socket.onmessage = (e) => {
 
 function sendFrame(data) {
     if (state.isOnline) {
-        console.log("Send frame " + data.length + " bytes");
         socket.send(data);
     }
 }
