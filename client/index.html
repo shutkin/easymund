@@ -15,16 +15,5 @@
         <div class="wrapper">
             <button class="start" id="button_start" onclick="start().then(() => {alert('Conference started')})">Start</button>
         </div>
-        <script type="module">
-            import init, { WasmLib } from './easymund_client_processor.js';
-        
-            async function run() {
-                await init();
-                const lib = WasmLib.create(2048);
-                console.log(lib);
-            }
-        
-            run();
-        </script>
     </body>
 </html>

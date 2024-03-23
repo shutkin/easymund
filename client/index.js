@@ -26,6 +26,7 @@ socket.onmessage = (e) => {
 
 function sendFrame(data) {
     if (state.isOnline) {
+        console.log("Send frame " + data.length + " bytes");
         socket.send(data);
     }
 }
@@ -49,7 +50,7 @@ async function start() {
     if (state.isActive) return;
     if (audioContext == null) {
         try {
-            const response = await window.fetch("easymund_client_processor_bg.wasm");
+            const response = await window.fetch("pack/easymund_client_processor_bg.wasm");
             const wasmBytes = await response.arrayBuffer();
             console.log("Loaded wasm " + wasmBytes.byteLength + " bytes");
 

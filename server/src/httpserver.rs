@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::fs::File;
+use std::fs::{DirEntry, File};
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -37,7 +37,8 @@ pub struct HTTPGetReq {
 
 impl HTTPServer {
     pub async fn start(addr: &str, content_path: &str, is_secure: bool) -> Result<(), Box<dyn Error>> {
-        let files = HTTPServer::read_files(content_path)?;
+        let files = HTTPServer::read_files(content_path, &String::from(""))?;
+        debug!("Files: {:?}", &files.keys());
         let acceptor = if is_secure {
             let tls_config = Arc::new(HTTPServer::create_tls_config()?);
             Some(TlsAcceptor::from(tls_config))
@@ -68,16 +69,39 @@ impl HTTPServer {
         }
     }
 
-    fn read_files(content_path: &str) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
+    fn read_files(content_path: &str, prefix: &String) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
         let mut result = HashMap::new();
+        info!("Scan dir {content_path}");
         for entry in fs::read_dir(content_path)?.flatten() {
-            let filename = entry.file_name().into_string().map_err(|s| format!("Invalid OsString {:?}", s))?;
-            if filename.contains("code-workspace") {continue;}
-            let data = fs::read(entry.path())?;
-            info!("Read {:?} {} bytes", &entry.file_name(), data.len());
-            result.insert(filename, data);
+            match HTTPServer::read_dir_entry(prefix, &entry) {
+                Ok(res) => {
+                    result.extend(res.into_iter());
+                }
+                Err(e) => {
+                    error!("Failed to read entry {:?}: {:?}", &entry, e);
+                }
+            }
         }
         Ok(result)
+    }
+
+    fn read_dir_entry(prefix: &String, entry: &DirEntry) -> Result<HashMap<String, Vec<u8>>, Box<dyn Error>> {
+        let filename = entry.file_name().into_string().map_err(|s| format!("Invalid OsString {:?}", s))?;
+        if filename.contains("code-workspace") || filename.starts_with('.') {
+            Ok(HashMap::new())
+        } else {
+            let filename_with_prefix = format!("{}/{}", prefix, filename);
+            if entry.path().is_dir() {
+                let path = entry.path();
+                HTTPServer::read_files(path.to_str().unwrap_or_default(), &filename_with_prefix)
+            } else {
+                let mut result = HashMap::with_capacity(1);
+                let data = fs::read(entry.path())?;
+                info!("Read {}: {} bytes", &filename_with_prefix, data.len());
+                result.insert(filename_with_prefix.strip_prefix('/').map(String::from).unwrap_or(filename_with_prefix), data);
+                Ok(result)
+            }
+        }
     }
 
     async fn handle_secure_connection(stream: TcpStream, addr: &SocketAddr,

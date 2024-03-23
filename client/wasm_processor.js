@@ -1,4 +1,4 @@
-import init, { WasmLib } from './easymund_client_processor.js';
+import init, { WasmLib } from './pack/easymund_client_processor.js';
 
 class WasmProcessor extends AudioWorkletProcessor {
     lib = null;
