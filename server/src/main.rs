@@ -10,6 +10,7 @@ use crate::wsserver::WSServer;
 mod wsserver;
 mod easymund;
 mod httpserver;
+mod dto;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

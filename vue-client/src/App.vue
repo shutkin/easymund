@@ -21,6 +21,8 @@ async function start(user_name) {
     await audio.init();
     console.log("Audio initialized");
     started.value = true;
+
+    socket.send_message({type: "json", data: {event: "join", name: user_name}});
 }
 
 function stop() {

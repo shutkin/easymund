@@ -14,6 +14,7 @@ use wav::{BitDepth, Header};
 
 use easymund_audio_codec::codec::{Codec, EasymundAudio};
 
+use crate::dto::ParticipantEvent;
 use crate::wsserver::WSClientEvent;
 
 const SAMPLE_RATE: usize = 44100;
@@ -27,6 +28,7 @@ struct Client {
     stream: Vec<f32>,
     stream_send_position: usize,
     codec: Codec,
+    participant: Option<Participant>,
 }
 
 impl Client {
@@ -36,8 +38,14 @@ impl Client {
             stream: Vec::new(),
             stream_send_position: 0,
             codec: easymun_audio.create_codec(packet_size).unwrap(),
+            participant: None,
         }
     }
+}
+
+#[derive(Debug)]
+struct Participant {
+    name: String,
 }
 
 struct Room {
@@ -81,24 +89,26 @@ impl Easymund {
         let easymund_audio = EasymundAudio::new(SAMPLE_RATE, 1, 16);
         let tick_time = 1_000_000_u64 * self.packet_size as u64 / SAMPLE_RATE as u64;
         let packet_size = self.packet_size;
+        let sender = command_channel.clone();
         task::spawn(async move {
             let mut interval = time::interval(Duration::from_micros(tick_time));
             loop {
                 interval.tick().await;
-                Easymund::handle_tick(background_clone.clone(), context_clone.clone(), &command_channel, packet_size).await;
+                Easymund::handle_tick(background_clone.clone(), context_clone.clone(), &sender, packet_size).await;
             }
         });
 
         let context_clone = context.clone();
+        let sender = command_channel.clone();
         while let Some(event) = events_channel.recv().await {
             if !event.is_connected {
                 Easymund::handle_client_disconnect(event.client_id, &context_clone).await;
             } else if !context_clone.clients.lock().await.contains_key(&event.client_id) {
                 Easymund::handle_client_connected(event.client_id, event.text_message.unwrap_or_default(), &context_clone, &easymund_audio, packet_size).await;
             } else if let Some(text) = event.text_message {
-                debug!("Client {}: {:?}", event.client_id, &text);
+                Easymund::handle_client_event(event.client_id, text, &context_clone, &sender).await;
             } else if let Some(data) = event.binary_message {
-                Easymund::handle_client_data(event.client_id, data.as_slice(), &context_clone).await;
+                Easymund::handle_client_stream(event.client_id, data.as_slice(), &context_clone).await;
             }
         }
         Ok(())
@@ -143,7 +153,47 @@ impl Easymund {
         }
     }
 
-    async fn handle_client_data(client_id: u64, data: &[u8], context: &Context) {
+    async fn handle_client_event(client_id: u64, data: String, context: &Context, sender: &Sender<WSClientEvent>) {
+        match serde_json::from_str::<ParticipantEvent>(data.as_str()) {
+            Ok(event) => {
+                debug!("Client {}: {:?}", client_id, &event);
+                if let Some(participant_name) = event.name {
+                    let mut room_name = None;
+                    if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
+                        let participant = Participant {name: participant_name};
+                        info!("Client {}: {:?}", client_id, &participant);
+                        client.participant = Some(participant);
+                        room_name = Some(client.room.clone());
+                    }
+                    let mut participants = Vec::new();
+                    if let Some(room) = context.rooms.lock().await.get(&room_name.unwrap()) {
+                        for client_id in &room.clients {
+                            if let Some(client) = context.clients.lock().await.get_mut(client_id) {
+                                if let Some(participant) = &client.participant {
+                                    participants.push(participant.name.clone());
+                                }
+                            }
+                        }
+                    }
+                    let send_event = ParticipantEvent {
+                        event: String::from("participants"),
+                        participants: Some(participants),
+                        name: None,
+                    };
+                    let json = serde_json::to_string(&send_event).unwrap();
+                    debug!("Client {} send json {}", client_id, &json);
+                    if let Err(e) = sender.send(WSClientEvent {client_id, is_connected: true, text_message: Some(json), binary_message: None}).await {
+                        error!("Failed to send json event: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to deserialize {}: {:?}", &data, e);
+            }
+        }
+    }
+
+    async fn handle_client_stream(client_id: u64, data: &[u8], context: &Context) {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             match client.codec.decode(data) {
                 Ok(decoded_res) => {
@@ -181,7 +231,7 @@ impl Easymund {
                 let mut channels = Vec::new();
                 channels.push(background_chunk.as_slice());
                 for (other_client_id, other_client_chunk) in &clients_chunks {
-                    if client_id != other_client_id {
+                    if *client_id != *other_client_id {
                         channels.push(other_client_chunk);
                     }
                 }
