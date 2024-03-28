@@ -2,11 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::Write;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use log::{debug, error, info};
+use log::{error, info};
 use tokio::{task, time};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
@@ -14,7 +13,7 @@ use wav::{BitDepth, Header};
 
 use easymund_audio_codec::codec::{Codec, EasymundAudio};
 
-use crate::dto::ParticipantEvent;
+use crate::event_handler::EventHandler;
 use crate::wsserver::WSClientEvent;
 
 const SAMPLE_RATE: usize = 44100;
@@ -23,12 +22,12 @@ pub struct Easymund {
     packet_size: usize,
 }
 
-struct Client {
-    room: String,
+pub struct Client {
+    pub room: String,
     stream: Vec<f32>,
     stream_send_position: usize,
     codec: Codec,
-    participant: Option<Participant>,
+    pub participant: Option<Participant>,
 }
 
 impl Client {
@@ -44,12 +43,12 @@ impl Client {
 }
 
 #[derive(Debug)]
-struct Participant {
-    name: String,
+pub struct Participant {
+    pub name: String,
 }
 
-struct Room {
-    clients: HashSet<u64>,
+pub struct Room {
+    pub clients: HashSet<u64>,
     background_position: usize,
 }
 
@@ -63,10 +62,9 @@ impl Room {
 }
 
 #[derive(Clone)]
-struct Context {
-    clients: Arc<Mutex<HashMap<u64, Client>>>,
-    rooms: Arc<Mutex<HashMap<String, Room>>>,
-    last_tick_time: Arc<Mutex<SystemTime>>,
+pub struct Context {
+    pub clients: Arc<Mutex<HashMap<u64, Client>>>,
+    pub rooms: Arc<Mutex<HashMap<String, Room>>>,
 }
 
 impl Easymund {
@@ -80,7 +78,6 @@ impl Easymund {
         let context = Context {
             clients: Arc::new(Mutex::new(HashMap::new())),
             rooms: Arc::new(Mutex::new(HashMap::new())),
-            last_tick_time: Arc::new(Mutex::new(SystemTime::now())),
         };
         let background = Easymund::read_sound("sounds/forest-ambience.wav", 0.25)?;
         let background_arc = Arc::new(background);
@@ -102,11 +99,11 @@ impl Easymund {
         let sender = command_channel.clone();
         while let Some(event) = events_channel.recv().await {
             if !event.is_connected {
-                Easymund::handle_client_disconnect(event.client_id, &context_clone).await;
+                Easymund::handle_client_disconnect(event.client_id, &context_clone, &sender).await;
             } else if !context_clone.clients.lock().await.contains_key(&event.client_id) {
                 Easymund::handle_client_connected(event.client_id, event.text_message.unwrap_or_default(), &context_clone, &easymund_audio, packet_size).await;
             } else if let Some(text) = event.text_message {
-                Easymund::handle_client_event(event.client_id, text, &context_clone, &sender).await;
+                EventHandler::handle_client_event(event.client_id, text, &context_clone, &sender).await;
             } else if let Some(data) = event.binary_message {
                 Easymund::handle_client_stream(event.client_id, data.as_slice(), &context_clone).await;
             }
@@ -133,11 +130,13 @@ impl Easymund {
         lock.get_mut(room_name.as_str()).unwrap().clients.insert(client_id);
     }
 
-    async fn handle_client_disconnect(client_id: u64, context: &Context) {
+    async fn handle_client_disconnect(client_id: u64, context: &Context, sender: &Sender<WSClientEvent>) {
         info!("Client {} disconnected", client_id);
+        let mut room_name = None;
         if let Some(client) = context.clients.lock().await.remove(&client_id) {
             if let Some(room) = context.rooms.lock().await.get_mut(client.room.as_str()) {
                 room.clients.remove(&client_id);
+                room_name = Some(client.room.clone());
             }
 
             let wav_data = client.stream.iter().map(|f| (f * 32768.0) as i16).collect::<Vec<i16>>();
@@ -151,45 +150,9 @@ impl Easymund {
                 }
             }
         }
-    }
 
-    async fn handle_client_event(client_id: u64, data: String, context: &Context, sender: &Sender<WSClientEvent>) {
-        match serde_json::from_str::<ParticipantEvent>(data.as_str()) {
-            Ok(event) => {
-                debug!("Client {}: {:?}", client_id, &event);
-                if let Some(participant_name) = event.name {
-                    let mut room_name = None;
-                    if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
-                        let participant = Participant {name: participant_name};
-                        info!("Client {}: {:?}", client_id, &participant);
-                        client.participant = Some(participant);
-                        room_name = Some(client.room.clone());
-                    }
-                    let mut participants = Vec::new();
-                    if let Some(room) = context.rooms.lock().await.get(&room_name.unwrap()) {
-                        for client_id in &room.clients {
-                            if let Some(client) = context.clients.lock().await.get_mut(client_id) {
-                                if let Some(participant) = &client.participant {
-                                    participants.push(participant.name.clone());
-                                }
-                            }
-                        }
-                    }
-                    let send_event = ParticipantEvent {
-                        event: String::from("participants"),
-                        participants: Some(participants),
-                        name: None,
-                    };
-                    let json = serde_json::to_string(&send_event).unwrap();
-                    debug!("Client {} send json {}", client_id, &json);
-                    if let Err(e) = sender.send(WSClientEvent {client_id, is_connected: true, text_message: Some(json), binary_message: None}).await {
-                        error!("Failed to send json event: {:?}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Failed to deserialize {}: {:?}", &data, e);
-            }
+        if let Some(room_name) = room_name {
+            EventHandler::handle_room_upate(&room_name, context, sender).await;
         }
     }
 
@@ -206,11 +169,6 @@ impl Easymund {
     }
 
     async fn handle_tick(background: Arc<Vec<f32>>, context: Context, sender: &Sender<WSClientEvent>, packet_size: usize) {
-        let now = SystemTime::now();
-        let micros = now.duration_since(*context.last_tick_time.lock().await).unwrap_or_default().as_micros();
-        let real_samples_count = (micros * SAMPLE_RATE as u128 / 1_000_000) as usize;
-        *context.last_tick_time.lock().await = now;
-
         let mut send_futures = Vec::new();
         for room in context.rooms.lock().await.values_mut() {
             let background_chunk = Easymund::room_background_chunk(room, packet_size, &background);

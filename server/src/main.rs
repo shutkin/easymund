@@ -11,6 +11,7 @@ mod wsserver;
 mod easymund;
 mod httpserver;
 mod dto;
+mod event_handler;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
