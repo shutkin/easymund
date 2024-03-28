@@ -30,6 +30,7 @@ class EasymundSocket {
         this.socket.onmessage = (e) => {
             if (typeof e.data === "string") {
                 console.log("Message " + e.data);
+                this.listener({type: "json", data: JSON.parse(e.data)})
             } else {
                 this.receive_frame(e.data);
             }

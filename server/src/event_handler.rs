@@ -1,6 +1,7 @@
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
-use crate::dto::ParticipantEvent;
+
+use crate::dto;
 use crate::easymund::{Context, Participant};
 use crate::wsserver::WSClientEvent;
 
@@ -8,7 +9,7 @@ pub struct EventHandler {}
 
 impl EventHandler {
     pub async fn handle_client_event(client_id: u64, data: String, context: &Context, sender: &Sender<WSClientEvent>) {
-        match serde_json::from_str::<ParticipantEvent>(data.as_str()) {
+        match serde_json::from_str::<dto::ParticipantEvent>(data.as_str()) {
             Ok(event) => {
                 debug!("Client {}: {:?}", client_id, &event);
                 if let Some(participant_name) = event.name {
@@ -41,13 +42,13 @@ impl EventHandler {
             for client_id in &room.clients {
                 if let Some(client) = context.clients.lock().await.get_mut(client_id) {
                     if let Some(participant) = &client.participant {
-                        participants.push(participant.name.clone());
+                        participants.push(dto::Participant {name: participant.name.clone()});
                         clients_ids.push(*client_id);
                     }
                 }
             }
         }
-        let send_event = ParticipantEvent {
+        let send_event = dto::ParticipantEvent {
             event: String::from("participants"),
             participants: Some(participants),
             name: None,

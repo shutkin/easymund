@@ -3,6 +3,7 @@ import Room from './components/Room.vue';
 import Login from './components/Login.vue';
 import { EasymundAudio } from './audio';
 import { EasymundSocket } from './ws';
+import { room_state } from './room_state';
 import { ref } from 'vue';
 
 const started = ref(false);
@@ -44,6 +45,11 @@ function on_ws_message(event) {
         audio.send_message(event);
     } else if (event.type === "log") {
         console.log("Socket log: " + event.message);
+    } else if (event.type === "json") {
+        if (event.data.event === "participants") {
+            console.log(event.data.participants);
+            room_state.participants = event.data.participants;
+        }
     }
 }
 

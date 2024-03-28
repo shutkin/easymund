@@ -1,12 +1,16 @@
 <script setup>
 import { ref } from 'vue';
 const user_name = ref("");
+defineEmits(['event_login'])
 </script>
 
 <template>
     <div class="wrapper">
-        <p>Представьтесь, пожалуйста</p>
-        <input v-model="user_name" placeholder="Ваше имя">
-        <button v-if="user_name.length > 2" @click="$emit('event_login', user_name)">Старт</button>
+        <form v-on:submit.prevent="$emit('event_login', user_name)">
+            <label for="new-todo">Представьтесь, пожалуйста</label>
+            <br>
+            <input v-model="user_name" placeholder="Ваше имя"/>
+            <button :disabled="user_name.length < 3">Старт</button>
+        </form>
     </div>
 </template>
