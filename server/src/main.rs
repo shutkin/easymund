@@ -12,6 +12,7 @@ mod easymund;
 mod httpserver;
 mod dto;
 mod event_handler;
+mod ambience;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

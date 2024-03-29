@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use wav::{BitDepth, Header};
 
 use easymund_audio_codec::codec::{Codec, EasymundAudio};
+use crate::ambience::Ambience;
 
 use crate::event_handler::EventHandler;
 use crate::wsserver::WSClientEvent;
@@ -49,14 +50,16 @@ pub struct Participant {
 
 pub struct Room {
     pub clients: HashSet<u64>,
-    background_position: usize,
+    pub ambience_id: String,
+    pub ambience_position: usize,
 }
 
 impl Room {
-    fn new() -> Room {
+    fn new(ambience_id: &str) -> Room {
         Room {
             clients: HashSet::new(),
-            background_position: 0,
+            ambience_id: String::from(ambience_id),
+            ambience_position: 0,
         }
     }
 }
@@ -65,6 +68,7 @@ impl Room {
 pub struct Context {
     pub clients: Arc<Mutex<HashMap<u64, Client>>>,
     pub rooms: Arc<Mutex<HashMap<String, Room>>>,
+    pub ambiences: Arc<Vec<Ambience>>,
 }
 
 impl Easymund {
@@ -75,13 +79,12 @@ impl Easymund {
     }
 
     pub async fn start(&self, mut events_channel: Receiver<WSClientEvent>, command_channel: Sender<WSClientEvent>) -> Result<(), Box<dyn Error>> {
+        let ambiences = Ambience::read_dir("sounds")?;
         let context = Context {
             clients: Arc::new(Mutex::new(HashMap::new())),
             rooms: Arc::new(Mutex::new(HashMap::new())),
+            ambiences: Arc::new(ambiences)
         };
-        let background = Easymund::read_sound("sounds/forest-ambience.wav", 0.25)?;
-        let background_arc = Arc::new(background);
-        let background_clone = background_arc.clone();
         let context_clone = context.clone();
         let easymund_audio = EasymundAudio::new(SAMPLE_RATE, 1, 16);
         let tick_time = 1_000_000_u64 * self.packet_size as u64 / SAMPLE_RATE as u64;
@@ -91,7 +94,7 @@ impl Easymund {
             let mut interval = time::interval(Duration::from_micros(tick_time));
             loop {
                 interval.tick().await;
-                Easymund::handle_tick(background_clone.clone(), context_clone.clone(), &sender, packet_size).await;
+                Easymund::handle_tick(context_clone.clone(), &sender, packet_size).await;
             }
         });
 
@@ -111,21 +114,13 @@ impl Easymund {
         Ok(())
     }
 
-    fn read_sound(path: &str, factor: f32) -> Result<Vec<f32>, Box<dyn Error>> {
-        let mut background_file = File::open(path)?;
-        let (header, bits) = wav::read(&mut background_file)?;
-        let data_i16 = bits.try_into_sixteen().unwrap_or_default();
-        info!("Sound {} {:?}, length {}", path, &header, data_i16.len());
-        Ok(data_i16.iter().map(|v| *v as f32 * factor / 32768.0).collect())
-    }
-
     async fn handle_client_connected(client_id: u64, path: String, context: &Context, easymund_audio: &EasymundAudio, packet_size: usize) {
         let room_name = path.strip_prefix('/').map(String::from).unwrap_or(path);
         info!("Client {} connect to room {:?}", client_id, &room_name);
         context.clients.lock().await.insert(client_id, Client::new(&room_name, easymund_audio, packet_size));
         let mut lock = context.rooms.lock().await;
         if !lock.contains_key(&room_name) {
-            lock.insert(room_name.clone(), Room::new());
+            lock.insert(room_name.clone(), Room::new(&context.ambiences[0].id));
         }
         lock.get_mut(room_name.as_str()).unwrap().clients.insert(client_id);
     }
@@ -168,10 +163,13 @@ impl Easymund {
         }
     }
 
-    async fn handle_tick(background: Arc<Vec<f32>>, context: Context, sender: &Sender<WSClientEvent>, packet_size: usize) {
+    async fn handle_tick(context: Context, sender: &Sender<WSClientEvent>, packet_size: usize) {
         let mut send_futures = Vec::new();
         for room in context.rooms.lock().await.values_mut() {
-            let background_chunk = Easymund::room_background_chunk(room, packet_size, &background);
+            let ambience_chunk =
+            if let Some(ambience) = context.ambiences.iter().find(|a| a.id == room.ambience_id) {
+                Some(Easymund::room_ambience_chunk(room, packet_size, &ambience.data))
+            } else { None };
 
             let mut clients_chunks = HashMap::new();
             for client_id in &room.clients {
@@ -187,7 +185,9 @@ impl Easymund {
 
             for client_id in &room.clients {
                 let mut channels = Vec::new();
-                channels.push(background_chunk.as_slice());
+                if let Some(chunk) = &ambience_chunk {
+                    channels.push(chunk.as_slice());
+                }
                 for (other_client_id, other_client_chunk) in &clients_chunks {
                     if *client_id != *other_client_id {
                         channels.push(other_client_chunk);
@@ -216,14 +216,14 @@ impl Easymund {
         }
     }
 
-    fn room_background_chunk(room: &mut Room, samples_count: usize, background: &Arc<Vec<f32>>) -> Vec<f32> {
+    fn room_ambience_chunk(room: &mut Room, samples_count: usize, background: &Vec<f32>) -> Vec<f32> {
         let mut chunk = Vec::with_capacity(samples_count);
-        let mut pos = room.background_position;
+        let mut pos = room.ambience_position;
         for _ in 0..samples_count {
+            pos = if pos >= background.len() - 1 {0} else {pos + 1};
             chunk.push(background[pos]);
-            pos = if pos == background.len() - 1 {0} else {pos + 1};
         }
-        room.background_position = pos;
+        room.ambience_position = pos;
         chunk
     }
 
