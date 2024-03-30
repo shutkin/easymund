@@ -58,6 +58,10 @@ function on_ws_message(event) {
         if (event.data.event === "room") {
             room_state.participants = event.data.participants;
             room_state.ambiences = event.data.ambiences;
+        } else if (event.data.event === "participants") {
+            room_state.participants = event.data.participants;
+        } else if (event.data.event === "ambience") {
+            room_state.ambience = event.data.ambience;
         }
     }
 }

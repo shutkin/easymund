@@ -147,7 +147,7 @@ impl Easymund {
         }
 
         if let Some(room_name) = room_name {
-            EventHandler::handle_room_upate(&room_name, context, sender).await;
+            EventHandler::handle_room_update(client_id, &room_name, context, sender).await;
         }
     }
 

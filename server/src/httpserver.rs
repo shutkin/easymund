@@ -36,13 +36,15 @@ pub struct HTTPGetReq {
 }
 
 impl HTTPServer {
-    pub async fn start(addr: &str, content_path: &str, is_secure: bool) -> Result<(), Box<dyn Error>> {
-        let files = HTTPServer::read_files(content_path, &String::from(""))?;
+    pub async fn start(content_path: String, is_secure: bool) -> Result<(), Box<dyn Error>> {
+        let files = HTTPServer::read_files(content_path.as_str(), &String::from(""))?;
         debug!("Files: {:?}", &files.keys());
-        let acceptor = if is_secure {
+        let (acceptor, addr) = if is_secure {
             let tls_config = Arc::new(HTTPServer::create_tls_config()?);
-            Some(TlsAcceptor::from(tls_config))
-        } else {None};
+            (Some(TlsAcceptor::from(tls_config)), "[::]:443")
+        } else {
+            (None, "[::]:80")
+        };
         let listener = TcpListener::bind(addr).await?;
         info!("HTTPServer started on {addr}");
 

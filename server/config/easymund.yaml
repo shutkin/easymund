@@ -1,0 +1,3 @@
+http:
+  is_secure: true
+  content_path: '../client'
