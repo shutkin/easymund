@@ -7,9 +7,9 @@ defineEmits(['event_login'])
 <template>
     <div class="wrapper">
         <form @submit.prevent="$emit('event_login', user_name)">
-            <label for="new-todo">Представьтесь, пожалуйста</label>
+            <label for="input_name">Представьтесь, пожалуйста</label>
             <br>
-            <input v-model="user_name" placeholder="Ваше имя"/>
+            <input id="input_name" v-model="user_name" placeholder="Ваше имя"/>
             <button :disabled="user_name.length < 3">Старт</button>
         </form>
     </div>

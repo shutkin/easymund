@@ -20,10 +20,11 @@ async function start(user_name) {
     socket = new EasymundSocket("dev-room", on_ws_message);
     audio = new EasymundAudio(on_audio_message);
     await audio.init();
+    audio.send_message({type: "mute", value: room_state.is_muted});
     console.log("Audio initialized");
     started.value = true;
 
-    socket.send_message({type: "json", data: {event: "join", name: user_name}});
+    socket.send_message({type: "json", data: {event: "join", participant:{name: user_name, is_muted: room_state.is_muted}}});
 }
 
 function stop() {
@@ -47,6 +48,12 @@ function ambience(ambience_select) {
             socket.send_message({type: "json", data: {event: "ambience", ambience: ambience.id}});
         }
     }
+}
+
+function mic_switch() {
+    room_state.is_muted = !room_state.is_muted;
+    audio.send_message({type: "mute", value: room_state.is_muted});
+    socket.send_message({type: "json", data: {event: "participant", participant: {is_muted: room_state.is_muted}}});
 }
 
 function on_ws_message(event) {
@@ -83,7 +90,7 @@ function on_audio_message(event) {
 
     <main>
         <Login v-if="!started" @event_login="start"/>
-        <Room v-if="started" @event_leave="stop" @event_ambience="ambience"/>
+        <Room v-if="started" @event_leave="stop" @event_ambience="ambience" @event_mic="mic_switch"/>
     </main>
 </template>
 

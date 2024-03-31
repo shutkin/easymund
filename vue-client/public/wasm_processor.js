@@ -5,6 +5,7 @@ class WasmProcessor extends AudioWorkletProcessor {
         super();
         this.lib = null;
         this.port.onmessage = (e) => this.onmessage(e.data);
+        this.is_muted = false;
     }
 
     onmessage(event) {
@@ -16,10 +17,13 @@ class WasmProcessor extends AudioWorkletProcessor {
             });
         } else if (event.type === "stream") {
             this.lib.receive(event.data);
+        } else if (event.type === "mute") {
+            this.is_muted = event.value;
+            this.port.postMessage({type: "log", message: "is muted: " + this.is_muted});
         }
     }
 
-    onerror(e) {
+    onerror(err) {
         this.port.postMessage({type: "log", message: err});
     }
 
@@ -29,7 +33,7 @@ class WasmProcessor extends AudioWorkletProcessor {
 
     process(inputs, outputs, parameters) {
         const input = inputs[0];
-        const input_channel = input[0];
+        const input_channel = this.is_muted ? new Float32Array(input[0].length) : input[0];
 
         const output = outputs[0];
         const output_channel_0 = output[0];

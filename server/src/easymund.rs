@@ -46,6 +46,7 @@ impl Client {
 #[derive(Debug)]
 pub struct Participant {
     pub name: String,
+    pub is_muted: bool,
 }
 
 pub struct Room {

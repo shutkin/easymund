@@ -25,7 +25,8 @@ impl Handler for JoinHandler {
         -> Vec<ClientEvent> {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             let participant = Participant {
-                name: event.name.unwrap_or_default()
+                name: event.participant.unwrap_or_default().name.unwrap_or(format!("{}", client_id)),
+                is_muted: true,
             };
             info!("Client {}: {:?}", client_id, &participant);
             client.participant = Some(participant);
@@ -44,7 +45,7 @@ impl JoinHandler {
             for client_id in &room.clients {
                 if let Some(client) = context.clients.lock().await.get(client_id) {
                     if let Some(participant) = &client.participant {
-                        participants.push(dto::Participant {name: participant.name.clone()});
+                        participants.push(participant_convert(participant));
                         if *client_id != new_client_id {
                             other_clients_ids.push(*client_id);
                         }
@@ -75,24 +76,7 @@ struct LeaveHandler {}
 impl Handler for LeaveHandler {
     async fn handle(&self, _: u64, room_name: &str, _: dto::EasymundEvent, context: &Context)
         -> Vec<ClientEvent> {
-        let mut participants = Vec::new();
-        let mut clients_ids = Vec::new();
-        if let Some(room) = context.rooms.lock().await.get(room_name) {
-            for client_id in &room.clients {
-                if let Some(client) = context.clients.lock().await.get(client_id) {
-                    if let Some(participant) = &client.participant {
-                        participants.push(dto::Participant {name: participant.name.clone()});
-                        clients_ids.push(*client_id);
-                    }
-                }
-            }
-        }
-
-        let mut events = Vec::with_capacity(clients_ids.len());
-        for client_id in clients_ids {
-            events.push(ClientEvent {client_id, event: dto::participants(participants.clone())});
-        }
-        events
+        EventHandler::update_room_participants(room_name, context, None).await
     }
 }
 
@@ -119,14 +103,64 @@ impl Handler for AmbienceHandler {
     }
 }
 
+struct ParticipantHandler {}
+
+#[async_trait]
+impl Handler for ParticipantHandler {
+    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
+        -> Vec<ClientEvent> {
+        if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
+            if let Some(participant) = &mut client.participant {
+                participant.is_muted = event.participant.unwrap_or_default().is_muted;
+                info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
+            }
+        }
+        EventHandler::update_room_participants(room_name, context, None).await
+    }
+}
+
+fn participant_convert(participant: &Participant) -> dto::Participant {
+    dto::Participant {
+        name: Some(participant.name.clone()),
+        is_muted: participant.is_muted,
+    }
+}
+
 pub struct EventHandler {
 }
 
 impl EventHandler {
+    async fn update_room_participants(room_name: &str, context: &Context, except_client: Option<u64>)
+                    -> Vec<ClientEvent> {
+        let mut participants = Vec::new();
+        let mut clients_ids = Vec::new();
+        if let Some(room) = context.rooms.lock().await.get(room_name) {
+            for client_id in &room.clients {
+                if except_client.map_or(false, |id| *client_id == id) {
+                    continue;
+                }
+                if let Some(client) = context.clients.lock().await.get(client_id) {
+                    if let Some(participant) = &client.participant {
+                        participants.push(participant_convert(participant));
+                        clients_ids.push(*client_id);
+                    }
+                }
+            }
+        }
+
+        let mut events = Vec::with_capacity(clients_ids.len());
+        for client_id in clients_ids {
+            events.push(ClientEvent {client_id, event: dto::participants(participants.clone())});
+        }
+        events
+    }
+
+
     fn get_handler(event: &str) -> Option<&dyn Handler> {
         match event {
             "join" => Some(&JoinHandler{}),
             "ambience" => Some(&AmbienceHandler{}),
+            "participant" => Some(&ParticipantHandler{}),
             _ => None
         }
     }
