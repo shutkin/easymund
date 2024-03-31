@@ -10,11 +10,14 @@ pub struct EasymundEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub participants: Option<Vec<Participant>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat: Option<Chat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ambiences: Option<Vec<Ambience>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Participant {
+    pub id: Option<u64>,
     pub name: Option<String>,
     pub is_muted: bool,
 }
@@ -25,13 +28,31 @@ pub struct Ambience {
     pub name: String,
 }
 
-pub fn room(participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>) -> EasymundEvent {
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct Chat {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub history: Option<Vec<ChatMessage>>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ChatMessage {
+    pub id: u64,
+    pub from: String,
+    pub text: String,
+}
+
+pub fn room(participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {
     EasymundEvent {
         event: String::from("room"),
         participants: Some(participants),
         ambiences: Some(ambiences),
         ambience,
         participant: None,
+        chat: Some(Chat {
+            message: None,
+            history: Some(chat),
+        }),
     }
 }
 
@@ -42,6 +63,7 @@ pub fn participants(participants: Vec<Participant>) -> EasymundEvent {
         ambiences: None,
         ambience: None,
         participant: None,
+        chat: None,
     }
 }
 
@@ -51,7 +73,8 @@ pub fn ambience(ambience: String) -> EasymundEvent {
         participants: None,
         ambiences: None,
         ambience: Some(ambience),
-        participant: None
+        participant: None,
+        chat: None,
     }
 }
 
@@ -61,6 +84,21 @@ pub fn leave() -> EasymundEvent {
         participants: None,
         ambiences: None,
         ambience: None,
-        participant: None
+        participant: None,
+        chat: None,
+    }
+}
+
+pub fn chat_message(chat_message: ChatMessage) -> EasymundEvent {
+    EasymundEvent {
+        event: String::from("chat"),
+        participants: None,
+        ambiences: None,
+        ambience: None,
+        participant: None,
+        chat: Some(Chat {
+            message: None,
+            history: Some(vec![chat_message]),
+        }),
     }
 }

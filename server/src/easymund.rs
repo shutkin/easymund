@@ -49,8 +49,15 @@ pub struct Participant {
     pub is_muted: bool,
 }
 
+pub struct ChatMessage {
+    pub id: u64,
+    pub from: String,
+    pub text: String,
+}
+
 pub struct Room {
     pub clients: HashSet<u64>,
+    pub chat: Vec<ChatMessage>,
     pub ambience_id: String,
     pub ambience_position: usize,
 }
@@ -59,6 +66,7 @@ impl Room {
     fn new(ambience_id: &str) -> Room {
         Room {
             clients: HashSet::new(),
+            chat: Vec::new(),
             ambience_id: String::from(ambience_id),
             ambience_position: 0,
         }
@@ -167,10 +175,8 @@ impl Easymund {
     async fn handle_tick(context: Context, sender: &Sender<WSClientEvent>, packet_size: usize) {
         let mut send_futures = Vec::new();
         for room in context.rooms.lock().await.values_mut() {
-            let ambience_chunk =
-            if let Some(ambience) = context.ambiences.iter().find(|a| a.id == room.ambience_id) {
-                Some(Easymund::room_ambience_chunk(room, packet_size, &ambience.data))
-            } else { None };
+            let ambience_chunk = context.ambiences.iter().find(|a| a.id == room.ambience_id)
+                .map(|ambience| Easymund::room_ambience_chunk(room, packet_size, &ambience.data));
 
             let mut clients_chunks = HashMap::new();
             for client_id in &room.clients {

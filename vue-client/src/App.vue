@@ -39,6 +39,9 @@ function stop() {
         }
         started.value = false;
     }
+    room_state.participants = [];
+    room_state.is_muted = true;
+    room_state.chat = [];
 }
 
 function ambience(ambience_select) {
@@ -56,20 +59,29 @@ function mic_switch() {
     socket.send_message({type: "json", data: {event: "participant", participant: {is_muted: room_state.is_muted}}});
 }
 
+function chat(text) {
+    console.log("Chat " + text);
+    socket.send_message({type: "json", data: {event: "chat", chat: {message: text}}});
+}
+
 function on_ws_message(event) {
     if (event.type === "stream" && audio != null) {
         audio.send_message(event);
     } else if (event.type === "log") {
         console.log("Socket log: " + event.message);
     } else if (event.type === "json") {
-        if (event.data.event === "room") {
-            room_state.participants = event.data.participants;
-            room_state.ambiences = event.data.ambiences;
-            room_state.ambience = event.data.ambience;
-        } else if (event.data.event === "participants") {
-            room_state.participants = event.data.participants;
-        } else if (event.data.event === "ambience") {
-            room_state.ambience = event.data.ambience;
+        const je = event.data;
+        if (je.event === "room") {
+            room_state.participants = je.participants;
+            room_state.ambiences = je.ambiences;
+            room_state.ambience = je.ambience;
+            room_state.chat = je.chat.history;
+        } else if (je.event === "participants") {
+            room_state.participants = je.participants;
+        } else if (je.event === "ambience") {
+            room_state.ambience = je.ambience;
+        } else if (je.event === "chat") {
+            room_state.chat.push(je.chat.history.pop());
         }
     }
 }
@@ -88,11 +100,11 @@ function on_audio_message(event) {
         <h1>Easymund</h1>
     </header>
 
-    <main>
+    <div class="cls_app">
         <Login v-if="!started" @event_login="start"/>
-        <Room v-if="started" @event_leave="stop" @event_ambience="ambience" @event_mic="mic_switch"/>
-    </main>
+        <Room v-if="started" @event_leave="stop" @event_ambience="ambience" @event_mic="mic_switch" @event_chat="chat"/>
+    </div>
 </template>
 
-<style scoped>
+<style>
 </style>

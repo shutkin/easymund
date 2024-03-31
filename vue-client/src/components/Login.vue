@@ -9,7 +9,7 @@ defineEmits(['event_login'])
         <label for="input_name">Представьтесь, пожалуйста</label>
         <input id="input_name" v-model="user_name" placeholder="Ваше имя"/>
         <div>
-            <button :disabled="user_name.length < 3">Старт</button>
+            <button :disabled="user_name.length < 3" type="submit">Старт</button>
         </div>
     </form>
 </template>

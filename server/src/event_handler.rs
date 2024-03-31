@@ -3,7 +3,7 @@ use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 
 use crate::dto;
-use crate::easymund::{Context, Participant};
+use crate::easymund::{ChatMessage, Context, Participant};
 use crate::wsserver::WSClientEvent;
 
 struct ClientEvent {
@@ -39,18 +39,26 @@ impl JoinHandler {
     async fn join_events(new_client_id: u64, room_name: &str, context: &Context) -> Vec<ClientEvent> {
         let mut participants = Vec::new();
         let mut other_clients_ids = Vec::new();
+        let mut chat = Vec::new();
         let mut ambience = None;
         if let Some(room) = context.rooms.lock().await.get(room_name) {
             ambience = Some(room.ambience_id.clone());
             for client_id in &room.clients {
                 if let Some(client) = context.clients.lock().await.get(client_id) {
                     if let Some(participant) = &client.participant {
-                        participants.push(participant_convert(participant));
+                        participants.push(participant_convert(*client_id, participant));
                         if *client_id != new_client_id {
                             other_clients_ids.push(*client_id);
                         }
                     }
                 }
+            }
+            for message in &room.chat {
+                chat.push(dto::ChatMessage {
+                    id: message.id,
+                    from: message.from.clone(),
+                    text: message.text.clone(),
+                })
             }
         }
         let ambiences = context.ambiences.iter().map(|ambience| dto::Ambience {
@@ -61,7 +69,7 @@ impl JoinHandler {
         let mut events = Vec::with_capacity(other_clients_ids.len() + 1);
         events.push(ClientEvent {
             client_id: new_client_id,
-            event: dto::room(participants.clone(), ambiences, ambience),
+            event: dto::room(participants.clone(), ambiences, ambience, chat),
         });
         for client_id in other_clients_ids {
             events.push(ClientEvent {client_id, event: dto::participants(participants.clone())});
@@ -119,8 +127,42 @@ impl Handler for ParticipantHandler {
     }
 }
 
-fn participant_convert(participant: &Participant) -> dto::Participant {
+struct ChatHandler {}
+
+#[async_trait]
+impl Handler for ChatHandler {
+    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent> {
+        let text = event.chat.unwrap_or_default().message.unwrap_or_default();
+        let mut participant_name = String::new();
+        if let Some(client) = context.clients.lock().await.get(&client_id) {
+            if let Some(participant) = &client.participant {
+                participant_name = participant.name.clone();
+            }
+        }
+
+        let mut events = Vec::new();
+        if let Some(room) = context.rooms.lock().await.get_mut(room_name) {
+            let id = room.chat.len() as u64;
+            room.chat.push(ChatMessage {id, from: participant_name.clone(), text: text.clone()});
+            for client_id in &room.clients {
+                events.push(ClientEvent {
+                    client_id: *client_id,
+                    event: dto::chat_message(dto::ChatMessage {
+                        id,
+                        from: participant_name.clone(),
+                        text: text.clone(),
+                    }),
+                });
+            }
+        }
+        events
+    }
+}
+
+fn participant_convert(client_id: u64, participant: &Participant) -> dto::Participant {
     dto::Participant {
+        id: Some(client_id),
         name: Some(participant.name.clone()),
         is_muted: participant.is_muted,
     }
@@ -141,7 +183,7 @@ impl EventHandler {
                 }
                 if let Some(client) = context.clients.lock().await.get(client_id) {
                     if let Some(participant) = &client.participant {
-                        participants.push(participant_convert(participant));
+                        participants.push(participant_convert(*client_id, participant));
                         clients_ids.push(*client_id);
                     }
                 }
@@ -161,6 +203,7 @@ impl EventHandler {
             "join" => Some(&JoinHandler{}),
             "ambience" => Some(&AmbienceHandler{}),
             "participant" => Some(&ParticipantHandler{}),
+            "chat" => Some(&ChatHandler{}),
             _ => None
         }
     }
