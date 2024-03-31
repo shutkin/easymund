@@ -1,16 +1,15 @@
 <script setup>
 import { ref } from 'vue';
+import { NForm, NFormItem, NInput, NButton } from 'naive-ui'
 const user_name = ref("");
 defineEmits(['event_login'])
 </script>
 
 <template>
-    <div class="wrapper">
-        <form @submit.prevent="$emit('event_login', user_name)">
-            <label for="input_name">Представьтесь, пожалуйста</label>
-            <br>
-            <input id="input_name" v-model="user_name" placeholder="Ваше имя"/>
-            <button :disabled="user_name.length < 3">Старт</button>
-        </form>
-    </div>
+    <n-form @submit.prevent="$emit('event_login', user_name)">
+        <n-form-item label="Представьтесь, пожалуйста">
+            <n-input id="input_name" v-model="user_name" placeholder="Ваше имя"/>
+        </n-form-item>
+        <n-button :disabled="user_name.length < 3" type="submit">Старт</n-button>
+    </n-form>
 </template>
