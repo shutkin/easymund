@@ -171,6 +171,8 @@ impl HTTPServer {
             "application/javascript"
         } else if filename.ends_with("wasm") {
             "application/wasm"
+        } else if filename.ends_with("css") {
+            "text/css"
         } else {
             "text/plain"
         }
