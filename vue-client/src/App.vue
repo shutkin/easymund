@@ -84,14 +84,8 @@ function on_audio_message(event) {
 </script>
 
 <template>
-    <header>
-        <h1>Easymund</h1>
-    </header>
-
-    <main>
-        <Login v-if="!started" @event_login="start"/>
-        <Room v-if="started" @event_leave="stop" @event_ambience="ambience" @event_mic="mic_switch"/>
-    </main>
+    <Login v-if="!started" @event_login="start"/>
+    <Room v-if="started" @event_leave="stop" @event_ambience="ambience" @event_mic="mic_switch"/>
 </template>
 
 <style scoped>
