@@ -18,6 +18,7 @@ trait Handler {
 }
 
 struct JoinHandler {}
+
 #[async_trait]
 impl Handler for JoinHandler {
     async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
@@ -69,6 +70,7 @@ impl JoinHandler {
 }
 
 struct LeaveHandler {}
+
 #[async_trait]
 impl Handler for LeaveHandler {
     async fn handle(&self, _: u64, room_name: &str, _: dto::EasymundEvent, context: &Context)
@@ -95,6 +97,7 @@ impl Handler for LeaveHandler {
 }
 
 struct AmbienceHandler {}
+
 #[async_trait]
 impl Handler for AmbienceHandler {
     async fn handle(&self, _: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)

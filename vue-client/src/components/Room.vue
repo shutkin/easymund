@@ -1,10 +1,18 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import Participant from './Participant.vue';
 import { room_state } from '../room_state';
 
 defineEmits(['event_leave', 'event_ambience']);
 const ambience_select = ref("");
+watch(() => room_state.ambience, (ambience_id) => {
+    for (const ambience of room_state.ambiences) {
+        if (ambience.id === ambience_id && ambience_select.value != ambience.name) {
+            console.log("change ambience to " + ambience.name);
+            ambience_select.value = ambience.name;
+        }
+    }
+});
 </script>
 <template>
     <div class="wrapper">

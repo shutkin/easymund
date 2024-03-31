@@ -9,6 +9,7 @@ class EasymundAudio {
         this.listener = listener;
         this.context = null;
         this.processor = null;
+        this.source = null;
     }
 
     /**
@@ -23,7 +24,7 @@ class EasymundAudio {
             this.context = new AudioContext({sampleRate: 44100});
             const stream = await navigator.mediaDevices.getUserMedia({audio: {noiseSuppression: false, echoCancellation: false, autoGainControl: true}, video: false});
             console.log("Mic stream", stream);
-            const source = this.context.createMediaStreamSource(stream);
+            this.source = this.context.createMediaStreamSource(stream);
             await this.context.audioWorklet.addModule("wasm_processor.js");
             this.processor = new AudioWorkletNode(this.context, "wasm-processor");
             this.processor.port.onmessage = (e) => {this.on_processor_message(e.data)};
@@ -31,7 +32,7 @@ class EasymundAudio {
             this.processor.port.postMessage({type: "wasm-module", data: wasm_bytes});
             this.processor.onprocessorerror = (err) => {console.log("Processor error: " + err);}
             console.log("Conference processor node", this.processor);
-            source.connect(this.processor).connect(this.context.destination);
+            this.source.connect(this.processor).connect(this.context.destination);
         } catch (error) {
             console.error(error);
             window.alert("Failed to start audio: " + error);
@@ -39,9 +40,15 @@ class EasymundAudio {
     }
 
     close() {
+        if (this.source != null) {
+            this.source.disconnect();
+            this.source = null;
+            console.log("Audio source diconnected");
+        }
         if (this.context != null) {
             this.context.close();
             this.context = null;
+            console.log("Audio context closed");
         }
     }
     
