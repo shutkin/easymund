@@ -2,5 +2,10 @@
 const props = defineProps(['chat_message'])
 </script>
 <template>
-    <p>{{ chat_message.from }}: {{ chat_message.text }}</p>
+    <div class="cls_chat_message">
+        <span>{{ chat_message.from }}: {{ chat_message.text }}</span>
+    </div>
 </template>
+<style>
+    .cls_chat_message {height: fit-content; padding: 0.5em;}
+</style>

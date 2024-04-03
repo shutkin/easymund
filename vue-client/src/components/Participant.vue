@@ -11,15 +11,12 @@ watch(
 </script>
 
 <template>
-    <div class="cls_div_participant">
+    <div class="cls_room_participant">
         <p>{{ participant.name }}</p>
         <span>🎤 {{ mic_state }}</span>
     </div>
 </template>
 
 <style>
-.cls_div_participant {
-  border: solid 1px;
-  margin: 1em;
-}
+    .cls_room_participant {padding: 0.5em; margin: 0.5em; height: fit-content; width: fit-content; border: solid 1px; border-color: lightgrey;}
 </style>

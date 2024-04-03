@@ -9,26 +9,25 @@ class WasmProcessor extends AudioWorkletProcessor {
     }
 
     onmessage(event) {
-        if (event.type === "wasm-module") {
-            this.port.postMessage({type: "log", message: "WASM module received"});
+        if (event.type === "audio_wasm") {
+            this.port.postMessage({type: "audio_log", data: "WASM module received"});
             init(WebAssembly.compile(event.data)).then(() => {
                 this.lib = WasmLib.create();
-                this.port.postMessage({type: "log", message: "WASM lib created"});
+                this.port.postMessage({type: "audio_log", data: "WASM lib created"});
             });
-        } else if (event.type === "stream") {
+        } else if (event.type === "audio_stream") {
             this.lib.receive(event.data);
-        } else if (event.type === "mute") {
+        } else if (event.type === "audio_mute") {
             this.is_muted = event.value;
-            this.port.postMessage({type: "log", message: "is muted: " + this.is_muted});
         }
     }
 
     onerror(err) {
-        this.port.postMessage({type: "log", message: err});
+        this.port.postMessage({type: "audio_log", data: err});
     }
 
     onprocessorerror(err) {
-        this.port.postMessage({type: "log", message: err});
+        this.port.postMessage({type: "audio_log", data: err});
     }
 
     process(inputs, outputs, parameters) {
@@ -45,7 +44,7 @@ class WasmProcessor extends AudioWorkletProcessor {
             if (send) {
                 const buffer = new Uint8Array(4096);
                 const size = this.lib.send(buffer);
-                this.port.postMessage({type: "stream", data: buffer.subarray(0, size)});
+                this.port.postMessage({type: "audio_stream", data: buffer.subarray(0, size)});
             }
         }
         return true;

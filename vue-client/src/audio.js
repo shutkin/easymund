@@ -1,12 +1,14 @@
+import { EventBus } from "./event_bus";
+
 export { EasymundAudio }
 
 class EasymundAudio {
     /**
      * 
-     * @param {Function} listener 
+     * @param {EventBus} event_bus
      */
-    constructor (listener) {
-        this.listener = listener;
+    constructor (event_bus) {
+        this.event_bus = event_bus;
         this.context = null;
         this.processor = null;
         this.source = null;
@@ -29,7 +31,7 @@ class EasymundAudio {
             this.processor = new AudioWorkletNode(this.context, "wasm-processor");
             this.processor.port.onmessage = (e) => {this.on_processor_message(e.data)};
             this.processor.port.onmessageerror = (e) => {console.log(e)};
-            this.processor.port.postMessage({type: "wasm-module", data: wasm_bytes});
+            this.processor.port.postMessage({type: "audio_wasm", data: wasm_bytes});
             this.processor.onprocessorerror = (err) => {console.log("Processor error: " + err);}
             console.log("Conference processor node", this.processor);
             this.source.connect(this.processor).connect(this.context.destination);
@@ -57,7 +59,7 @@ class EasymundAudio {
      * @param {Event} event 
      */
     on_processor_message(event) {
-        this.listener(event);
+        this.event_bus.fire(event);
     }
 
     /**

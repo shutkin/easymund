@@ -35,7 +35,7 @@ impl Client {
     fn new(room_name: &str, easymun_audio: &EasymundAudio, packet_size: usize) -> Client {
         Client {
             room: String::from(room_name),
-            stream: Vec::new(),
+            stream: vec![0.0; packet_size / 2],
             stream_send_position: 0,
             codec: easymun_audio.create_codec(packet_size).unwrap(),
             participant: None,

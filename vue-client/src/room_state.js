@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { EventBus } from './event_bus'
 
 export const room_state = reactive({
     ambiences: [],
@@ -6,4 +7,5 @@ export const room_state = reactive({
     chat: [],
     ambience: "",
     is_muted: true,
+    event_bus: new EventBus()
 })

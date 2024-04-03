@@ -1,14 +1,16 @@
+import { EventBus } from "./event_bus";
+
 export { EasymundSocket }
 
 class EasymundSocket {
     /**
      * @public
      * @param {String} room_name 
-     * @param {Function} listener 
+     * @param {EventBus} event_bus
      */
-    constructor (room_name, listener) {
+    constructor (room_name, event_bus) {
         this.is_online = false;
-        this.listener = listener;
+        this.event_bus = event_bus;
         this.message_queue = [];
         this.socket = new WebSocket("wss://" + window.location.hostname + ":5665/" + room_name);
         this.socket.binaryType = "arraybuffer";
@@ -30,7 +32,7 @@ class EasymundSocket {
         this.socket.onmessage = (e) => {
             if (typeof e.data === "string") {
                 console.log("Message " + e.data);
-                this.listener({type: "json", data: JSON.parse(e.data)})
+                this.event_bus.fire({type: "ws_json", data: JSON.parse(e.data)});
             } else {
                 this.receive_frame(e.data);
             }
@@ -75,7 +77,7 @@ class EasymundSocket {
      * @param {ArrayBuffer} data 
      */
     receive_frame(data) {
-        this.listener({type: "stream", data: new Uint8Array(data)});
+        this.event_bus.fire({type: "ws_stream", data: new Uint8Array(data)});
     }
 
     /**
@@ -85,8 +87,6 @@ class EasymundSocket {
     send_message(event) {
         if (event.type === "stream") {
             this.send_frame(event.data);
-        } else if (event.type === "log") {
-            console.log("WS log: " + event.message);
         } else if (event.type === "json") {
             this.send_text(JSON.stringify(event.data));
         }
