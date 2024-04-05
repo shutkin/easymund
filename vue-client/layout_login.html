@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Easymund Login Layout</title>
+        <style>
+            html {width: 100%; height: 100%; margin: 0; padding: 0;}
+            body {width: 100%; height: 100vh; 
+                margin: 0; padding: 0; 
+                font-family: Verdana, sans-serif; 
+                background-color: #f5f5f5;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }
+            div {width: auto; height: auto; margin: 0; padding: 0; overflow: hidden;}
+
+            .cls_login_form {
+                height: 6em; width: 35em; padding: 1.5em;
+                display: flex; flex-direction: column; gap: 1em;
+                background-color: #f1ead2;
+                border-radius: 0.5em;
+                box-shadow: 0 0.5em 1em rgba(0, 0, 0, 0.25);
+            }
+            .cls_login_label {
+                text-align: center;
+                color: #555;
+            }
+            .cls_login_input {
+                padding: 1em;
+                display: grid; grid-template-columns: 1fr 8em; gap: 0.5em;
+            }
+            .cls_input {
+                padding: 0.5em;
+                border: 1px solid #ddd;
+                border-radius: 0.5em;
+            }
+            .cls_input:focus {
+                box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
+                outline: none;
+            }
+            .cls_button {
+                padding: 0.5em;
+                border: none;
+                border-radius: 0.5em;
+                background-color: #365194;
+                color: #fff;
+                font-weight: bold;
+                text-align: center;
+                cursor: pointer;
+                transition: background-color 0.25s;
+            }
+            .cls_button:hover {
+                background-color: #213f84;
+                box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
+            }
+        </style>
+    </head>
+    <body>
+        <form class="cls_login_form">
+            <span class="cls_login_label">Представьтесь, пожалуйста</span>
+            <div class="cls_login_input">
+                <input class="cls_input" placeholder="Ваше имя"/>
+                <button class="cls_button" type="submit">Старт</button>
+            </div>
+        </form>
+    </body>
+</html>

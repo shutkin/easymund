@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Easymund Layout</title>
+    </head>
+    <!-- ADD8E7, F1EAD2, F5F5DD, c3a97e, 365194 and 213f84 -->
+    <style>
+        html {width: 100%; height: 100%; margin: 0; padding: 0;}
+        body {width: 100%; height: 100vh; 
+            margin: 0; padding: 0; 
+            font-family: Verdana, sans-serif; 
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        div {width: auto; height: auto; margin: 0; padding: 0; overflow: hidden;}
+        
+        .cls_main_cnt {
+            height: 97%; width: 90%;
+            display: grid; grid-template-columns: 20em 1fr;
+            background-color: #f1ead2;
+            border-radius: 0.5em;
+            box-shadow: 0 0.5em 1em rgba(0, 0, 0, 0.25);
+        }
+        
+        .cls_chat_cnt {
+            display: grid; grid-template-rows: 2.5em 1fr 3em;
+            border-right: 1px solid #ddd;
+            transition: 0.2s;
+        }
+        .cls_chat_title {text-align: center;}
+        .cls_chat {
+            padding: 0.5em; display: flow; overflow: hidden;
+            transition: 0.2s;
+        }
+        .cls_chat:hover {
+            overflow: auto;
+        }
+        .cls_chat_message {height: fit-content; padding: 0.5em;}
+        .cls_chat_form {
+            padding: 0.5em;
+            display: grid; grid-template-columns: 1fr 4em; gap: 0.5em;
+            background-color: #f5f5dd;
+        }
+
+        .cls_room_cnt {display: grid; grid-template-rows: 1fr 3em;}
+        .cls_room_participants {padding: 0.5em; display: flex; overflow: auto;}
+        .cls_room_participant {
+            height: fit-content; width: fit-content;
+            padding: 1em; margin: 0.5em;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .cls_room_participant:hover {
+            background-color: #f0f0f0;
+        }
+        .cls_room_controls {
+            padding: 0.5em;
+            display: flex; flex-direction: row; gap: 0.5em;
+            background-color: #f5f5dd;
+        }
+
+        .cls_input {
+            padding: 0.5em;
+            border: 1px solid #ddd;
+            border-radius: 0.5em;
+        }
+        .cls_input:focus {
+            box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
+            outline: none;
+        }
+        .cls_button {
+            padding: 0.5em;
+            border: none;
+            border-radius: 0.5em;
+            background-color: #365194;
+            color: #fff;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.25s, box-shadow 0.3s;
+        }
+        .cls_button:hover {
+            background-color: #213f84;
+            box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
+        }
+        .cls_button:focus {
+            background-color: #add8e7;
+        }
+    </style>
+    <body>
+        <div class="cls_main_cnt">
+            <div class="cls_chat_cnt">
+                <div class="cls_chat_title">
+                    <h3>Chat</h3>
+                </div>
+                <div class="cls_chat">
+                    <div class="cls_chat_message">1: hi!</div>
+                    <div class="cls_chat_message">2: hi!</div>
+                    <div class="cls_chat_message">3: hi!</div>
+                    <div class="cls_chat_message">4: hi!</div>
+                    <div class="cls_chat_message">5: hi!</div>
+                    <div class="cls_chat_message">6: hi!</div>
+                    <div class="cls_chat_message">7: hi!</div>
+                    <div class="cls_chat_message">8: hi!</div>
+                    <div class="cls_chat_message">9: hi!</div>
+                    <div class="cls_chat_message">10: hi!</div>
+                    <div class="cls_chat_message">11: hi!</div>
+                    <div class="cls_chat_message">12: hi!</div>
+                    <div class="cls_chat_message">1: hi!</div>
+                    <div class="cls_chat_message">2: hi!</div>
+                    <div class="cls_chat_message">3: hi!</div>
+                    <div class="cls_chat_message">4: hi!</div>
+                    <div class="cls_chat_message">5: hi!</div>
+                    <div class="cls_chat_message">6: hi!</div>
+                    <div class="cls_chat_message">7: hi!</div>
+                    <div class="cls_chat_message">8: hi!</div>
+                    <div class="cls_chat_message">9: hi!</div>
+                    <div class="cls_chat_message">10: hi!</div>
+                    <div class="cls_chat_message">11: hi!</div>
+                    <div class="cls_chat_message">12: hi!</div>
+                    <div class="cls_chat_message">1: hi!</div>
+                    <div class="cls_chat_message">2: hi!</div>
+                    <div class="cls_chat_message">3: hi!</div>
+                    <div class="cls_chat_message">4: hi!</div>
+                    <div class="cls_chat_message">5: hi!</div>
+                    <div class="cls_chat_message">6: hi!</div>
+                    <div class="cls_chat_message">7: hi!</div>
+                    <div class="cls_chat_message">8: hi!</div>
+                    <div class="cls_chat_message">9: hi!</div>
+                    <div class="cls_chat_message">10: hi!</div>
+                    <div class="cls_chat_message">11: hi!</div>
+                    <div class="cls_chat_message">12: hi!</div>
+                    <div class="cls_chat_message">1: hi!</div>
+                    <div class="cls_chat_message">2: hi!</div>
+                    <div class="cls_chat_message">3: hi!</div>
+                    <div class="cls_chat_message">4: hi!</div>
+                    <div class="cls_chat_message">5: hi!</div>
+                    <div class="cls_chat_message">6: hi!</div>
+                    <div class="cls_chat_message">7: hi!</div>
+                    <div class="cls_chat_message">8: hi!</div>
+                    <div class="cls_chat_message">9: hi!</div>
+                    <div class="cls_chat_message">10: hi!</div>
+                    <div class="cls_chat_message">11: hi!</div>
+                    <div class="cls_chat_message">12: hi!</div>
+                    <div class="cls_chat_message">1: hi!</div>
+                    <div class="cls_chat_message">2: hi!</div>
+                    <div class="cls_chat_message">3: hi!</div>
+                    <div class="cls_chat_message">4: hi!</div>
+                    <div class="cls_chat_message">5: hi!</div>
+                    <div class="cls_chat_message">6: hi!</div>
+                    <div class="cls_chat_message">7: hi!</div>
+                    <div class="cls_chat_message">8: hi!</div>
+                    <div class="cls_chat_message">9: hi!</div>
+                    <div class="cls_chat_message">10: hi!</div>
+                    <div class="cls_chat_message">11: hi!</div>
+                    <div class="cls_chat_message">12: hi!</div>
+                </div>
+                <form class="cls_chat_form">
+                    <input class="cls_input" placeholder="Chat message"/>
+                    <button type="submit" class="cls_button">Send</button>
+                </form>
+            </div>
+            <div class="cls_room_cnt">
+                <div class="cls_room_participants">
+                    <div class="cls_room_participant">
+                        <span>User 0</span>
+                    </div>
+                    <div class="cls_room_participant">
+                        <span>User 1</span>
+                    </div>
+                    <div class="cls_room_participant">
+                        <span>User 2</span>
+                    </div>
+                </div>
+                <div class="cls_room_controls">
+                    <button class="cls_button">Mute</button>
+                    <button class="cls_button">Exit</button>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
