@@ -23,7 +23,9 @@ class EventBus {
     fire(event) {
         const listener = this.listeners.get(event.type);
         if (listener) {
-            listener(event);
+            listener(event.data);
         }
     }
 }
+
+export const event_bus = new EventBus();

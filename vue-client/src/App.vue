@@ -4,6 +4,7 @@ import Login from './components/Login.vue';
 import { EasymundAudio } from './audio';
 import { EasymundSocket } from './ws';
 import { room_state } from './room_state';
+import { event_bus } from './event_bus';
 import { ref } from 'vue';
 
 const started = ref(false);
@@ -17,17 +18,17 @@ var socket = null;
 var audio = null;
 
 async function start(user_name) {
-    room_state.event_bus.listen("ws_json", on_ws_json);
-    room_state.event_bus.listen("ws_stream", on_ws_stream);
-    room_state.event_bus.listen("audio_log", (event) => { console.log("Audio log: " + event.data); });
-    room_state.event_bus.listen("audio_stream", on_audio_stream);
-    room_state.event_bus.listen("event_chat", on_chat);
-    room_state.event_bus.listen("event_ambience", on_ambience);
-    room_state.event_bus.listen("event_mute", on_mic_switch);
-    room_state.event_bus.listen("event_leave", on_leave);
+    event_bus.listen("ws_json", on_ws_json);
+    event_bus.listen("ws_stream", on_ws_stream);
+    event_bus.listen("audio_log", (event) => { console.log("Audio log: " + event.data); });
+    event_bus.listen("audio_stream", on_audio_stream);
+    event_bus.listen("event_chat", on_chat);
+    event_bus.listen("event_ambience", on_ambience);
+    event_bus.listen("event_mute", on_mic_switch);
+    event_bus.listen("event_leave", on_leave);
 
-    socket = new EasymundSocket("dev-room", room_state.event_bus);
-    audio = new EasymundAudio(room_state.event_bus);
+    socket = new EasymundSocket("dev-room");
+    audio = new EasymundAudio();
     await audio.init();
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
     started.value = true;
@@ -53,49 +54,48 @@ function on_leave() {
     room_state.ambience = "";
 }
 
-function on_ambience(event) {
+function on_ambience(data) {
     for (const ambience of room_state.ambiences) {
-        if (ambience.name === event.data) {
+        if (ambience.name === data) {
             socket.send_message({type: "json", data: {event: "ambience", ambience: ambience.id}});
         }
     }
 }
 
-function on_mic_switch(event) {
+function on_mic_switch() {
     room_state.is_muted = !room_state.is_muted;
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
     socket.send_message({type: "json", data: {event: "participant", participant: {is_muted: room_state.is_muted}}});
 }
 
-function on_chat(event) {
-    socket.send_message({type: "json", data: {event: "chat", chat: {message: event.data}}});
+function on_chat(data) {
+    socket.send_message({type: "json", data: {event: "chat", chat: {message: data}}});
 }
 
-function on_ws_stream(event) {
+function on_ws_stream(data) {
     if (audio != null) {
-        audio.send_message({type: "audio_stream", data: event.data});
+        audio.send_message({type: "audio_stream", data: data});
     }
 }
 
-function on_ws_json(event) {
-    const je = event.data;
-    if (je.event === "room") {
-        room_state.participants = je.participants;
-        room_state.ambiences = je.ambiences;
-        room_state.ambience = je.ambience;
-        room_state.chat = je.chat.history;
-    } else if (je.event === "participants") {
-        room_state.participants = je.participants;
-    } else if (je.event === "ambience") {
-        room_state.ambience = je.ambience;
-    } else if (je.event === "chat") {
-        room_state.chat.push(je.chat.history.pop());
+function on_ws_json(data) {
+    if (data.event === "room") {
+        room_state.participants = data.participants;
+        room_state.ambiences = data.ambiences;
+        room_state.ambience = data.ambience;
+        room_state.chat = data.chat.history;
+    } else if (data.event === "participants") {
+        room_state.participants = data.participants;
+    } else if (data.event === "ambience") {
+        room_state.ambience = data.ambience;
+    } else if (data.event === "chat") {
+        room_state.chat.push(data.chat.history.pop());
     }
 }
 
-function on_audio_stream(event) {
+function on_audio_stream(data) {
     if (socket != null) {
-        socket.send_message(event);
+        socket.send_message({type: "stream", data});
     }
 }
 </script>

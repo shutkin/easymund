@@ -1,14 +1,9 @@
-import { EventBus } from "./event_bus";
+import { event_bus } from "./event_bus";
 
 export { EasymundAudio }
 
 class EasymundAudio {
-    /**
-     * 
-     * @param {EventBus} event_bus
-     */
-    constructor (event_bus) {
-        this.event_bus = event_bus;
+    constructor () {
         this.context = null;
         this.processor = null;
         this.source = null;
@@ -59,7 +54,7 @@ class EasymundAudio {
      * @param {Event} event 
      */
     on_processor_message(event) {
-        this.event_bus.fire(event);
+        event_bus.fire(event);
     }
 
     /**

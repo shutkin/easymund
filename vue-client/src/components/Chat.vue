@@ -2,10 +2,11 @@
 import { ref } from 'vue';
 import ChatMessage from './ChatMessage.vue';
 import { room_state } from '../room_state';
+import { event_bus } from '../event_bus';
 
 const chat_message = ref("");
 function on_chat() {
-    room_state.event_bus.fire({type: "event_chat", data: chat_message.value});
+    event_bus.fire({type: "event_chat", data: chat_message.value});
     chat_message.value = "";
 }
 </script>

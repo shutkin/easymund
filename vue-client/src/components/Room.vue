@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import Chat from './Chat.vue';
 import Participant from './Participant.vue';
 import { room_state } from '../room_state';
+import { event_bus } from '../event_bus';
 
 const ambience_select = ref("");
 watch(() => room_state.ambience, (ambience_id) => {
@@ -19,7 +20,7 @@ watch(() => room_state.is_muted, (is_muted) => {
 });
 
 function on_ambience() {
-    room_state.event_bus.fire({type: "event_ambience", data: ambience_select.value});
+    event_bus.fire({type: "event_ambience", data: ambience_select.value});
 }
 </script>
 <template>
@@ -30,14 +31,14 @@ function on_ambience() {
                 <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant="participant"/>
             </div>
             <div class="cls_room_controls">
-                <button class="cls_button" style="width: 6em;" @click="room_state.event_bus.fire({type: 'event_mute', data: {}})">{{mic_state}}</button>
+                <button class="cls_button" style="width: 6em;" @click="event_bus.fire({type: 'event_mute', data: {}})">{{mic_state}}</button>
                 <div>
                     <span style="color: rgba(0, 0, 0, 0.75);">Фоновый звук:</span>
                     <select class="cls_select" v-model="ambience_select" @change="on_ambience">
                         <option v-for="(ambience) in room_state.ambiences" :key="ambience.id" :id="ambience.id">{{ambience.name}}</option>
                     </select>
                 </div>
-                <button class="cls_button" @click="room_state.event_bus.fire({type: 'event_leave', data: {}})">Выйти</button>
+                <button class="cls_button" @click="event_bus.fire({type: 'event_leave', data: {}})">Выйти</button>
             </div>
         </div>
     </section>
