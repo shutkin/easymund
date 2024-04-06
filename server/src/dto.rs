@@ -40,6 +40,7 @@ pub struct ChatMessage {
     pub id: u64,
     pub from: String,
     pub text: String,
+    pub time: String,
 }
 
 pub fn room(participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {

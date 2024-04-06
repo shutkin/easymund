@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 
@@ -54,11 +55,7 @@ impl JoinHandler {
                 }
             }
             for message in &room.chat {
-                chat.push(dto::ChatMessage {
-                    id: message.id,
-                    from: message.from.clone(),
-                    text: message.text.clone(),
-                })
+                chat.push(chat_msg_convert(message))
             }
         }
         let ambiences = context.ambiences.iter().map(|ambience| dto::Ambience {
@@ -144,15 +141,17 @@ impl Handler for ChatHandler {
         let mut events = Vec::new();
         if let Some(room) = context.rooms.lock().await.get_mut(room_name) {
             let id = room.chat.len() as u64;
-            room.chat.push(ChatMessage {id, from: participant_name.clone(), text: text.clone()});
+            let chat_message = ChatMessage {
+                id,
+                from: participant_name.clone(),
+                text: text.clone(),
+                time: Utc::now()
+            };
+            room.chat.push(chat_message.clone());
             for client_id in &room.clients {
                 events.push(ClientEvent {
                     client_id: *client_id,
-                    event: dto::chat_message(dto::ChatMessage {
-                        id,
-                        from: participant_name.clone(),
-                        text: text.clone(),
-                    }),
+                    event: dto::chat_message(chat_msg_convert(&chat_message)),
                 });
             }
         }
@@ -165,6 +164,15 @@ fn participant_convert(client_id: u64, participant: &Participant) -> dto::Partic
         id: Some(client_id),
         name: Some(participant.name.clone()),
         is_muted: participant.is_muted,
+    }
+}
+
+fn chat_msg_convert(message: &ChatMessage) -> dto::ChatMessage {
+    dto::ChatMessage {
+        id: message.id,
+        from: message.from.clone(),
+        time: format!("{}", message.time.format("%H:%M:%S")),
+        text: message.text.clone(),
     }
 }
 

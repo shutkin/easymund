@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
+use chrono::{DateTime, Utc};
 
 use log::{error, info};
 use tokio::{task, time};
@@ -49,10 +50,12 @@ pub struct Participant {
     pub is_muted: bool,
 }
 
+#[derive(Clone)]
 pub struct ChatMessage {
     pub id: u64,
     pub from: String,
     pub text: String,
+    pub time: DateTime<Utc>,
 }
 
 pub struct Room {
