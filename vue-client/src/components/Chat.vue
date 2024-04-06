@@ -19,15 +19,30 @@ function on_chat() {
             <ChatMessage v-for="(chat_message) in room_state.chat" :key="chat_message.id" :chat_message="chat_message"/>
         </div>
         <form class="cls_chat_form" @submit.prevent="on_chat">
-            <input v-model="chat_message" placeholder="Ваше сообщение"/>
-            <button type="submit">Отправить</button>
+            <input class="cls_input" v-model="chat_message" placeholder="Ваше сообщение"/>
+            <button class="cls_button" type="submit">Отправить</button>
         </form>
     </div>
 </template>
 
 <style>
-    .cls_chat_cnt {display: grid; grid-template-rows: 2.5em 1fr 2.5em;}
+    .cls_chat_cnt {
+        display: grid; grid-template-rows: 2.5em 1fr 3.5em;
+        border-right: 1px solid #ddd;
+        transition: 0.2s;
+    }
     .cls_chat_title {text-align: center;}
-    .cls_chat {padding: 0.5em; display: flow; overflow: auto;}
-    .cls_chat_form {padding: 0.5em; display: grid; grid-template-columns: 1fr 5em; gap: 0.5em; background-color: ivory;}
+    .cls_chat {
+        padding: 0.5em; display: flow; overflow: hidden;
+        transition: 0.2s;
+    }
+    .cls_chat:hover {
+        overflow: auto;
+    }
+    .cls_chat_form {
+        padding: 0.5em;
+        display: grid; grid-template-columns: 1fr 6em; gap: 0.5em;
+        align-items: center;
+        background-color: #f5f5dd;
+    }
 </style>

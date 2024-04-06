@@ -30,22 +30,33 @@ function on_ambience() {
                 <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant="participant"/>
             </div>
             <div class="cls_room_controls">
-                <button id="button_mic" @click="room_state.event_bus.fire({type: 'event_mute', data: {}})">{{mic_state}}</button>
+                <button class="cls_button" style="width: 6em;" @click="room_state.event_bus.fire({type: 'event_mute', data: {}})">{{mic_state}}</button>
                 <div>
-                    <span>Фоновый звук:</span>
-                    <select v-model="ambience_select" @change="on_ambience">
+                    <span style="color: rgba(0, 0, 0, 0.75);">Фоновый звук:</span>
+                    <select class="cls_select" v-model="ambience_select" @change="on_ambience">
                         <option v-for="(ambience) in room_state.ambiences" :key="ambience.id" :id="ambience.id">{{ambience.name}}</option>
                     </select>
                 </div>
-                <button @click="room_state.event_bus.fire({type: 'event_leave', data: {}})">Выйти</button>
+                <button class="cls_button" @click="room_state.event_bus.fire({type: 'event_leave', data: {}})">Выйти</button>
             </div>
         </div>
     </section>
 </template>
 
 <style>
-    .cls_main_cnt {height: 100%; width: 100%; display: grid; grid-template-columns: 20em 1fr;}
-    .cls_room_cnt {display: grid; grid-template-rows: 1fr 2.5em;}
+    .cls_main_cnt {
+        height: 97%; width: 90%;
+        display: grid; grid-template-columns: 24em 1fr;
+        background-color: #f1ead2;
+        border-radius: 0.5em;
+        box-shadow: 0 0.5em 1em rgba(0, 0, 0, 0.25);
+    }
+    .cls_room_cnt {display: grid; grid-template-rows: 1fr 3.5em;}
     .cls_room_participants {padding: 0.5em; display: flex; overflow: auto;}
-    .cls_room_controls {padding: 0.5em; display: flex; flex-direction: row; gap: 0.5em; background-color: ivory;}
+    .cls_room_controls {
+        padding: 0.5em;
+        display: flex; flex-direction: row; gap: 0.5em;
+        align-items: center;
+        background-color: #f5f5dd;
+    }
 </style>

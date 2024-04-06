@@ -18,5 +18,14 @@ watch(
 </template>
 
 <style>
-    .cls_room_participant {padding: 0.5em; margin: 0.5em; height: fit-content; width: fit-content; border: solid 1px; border-color: lightgrey;}
+    .cls_room_participant {
+        height: fit-content; width: fit-content;
+        padding: 1em; margin: 0.5em;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+    }
+    .cls_room_participant:hover {
+        background-color: #f0f0f0;
+    }
 </style>

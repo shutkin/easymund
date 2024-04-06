@@ -30,28 +30,4 @@ defineEmits(['event_login'])
     padding: 1em;
     display: grid; grid-template-columns: 1fr 8em; gap: 0.5em;
 }
-.cls_input {
-    padding: 0.5em;
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-}
-.cls_input:focus {
-    box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
-    outline: none;
-}
-.cls_button {
-    padding: 0.5em;
-    border: none;
-    border-radius: 0.5em;
-    background-color: #365194;
-    color: #fff;
-    font-weight: bold;
-    text-align: center;
-    cursor: pointer;
-    transition: background-color 0.25s;
-}
-.cls_button:hover {
-    background-color: #213f84;
-    box-shadow: 0 0.25em 0.5em rgba(0, 0, 0, 0.2);
-}
 </style>
