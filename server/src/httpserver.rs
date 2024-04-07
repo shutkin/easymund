@@ -5,6 +5,7 @@ use std::fs::{DirEntry, File};
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 use log::{debug, error, info};
 use rustls::pki_types::PrivateKeyDer;
@@ -15,6 +16,11 @@ use tokio_rustls::TlsAcceptor;
 
 enum HTTPStatus {
     Ok = 200, NotFound = 404, MethodNotAllowed = 405,
+}
+
+#[derive(Debug)]
+pub enum HTTPMethod {
+    Get, Post, Unknown,
 }
 
 impl HTTPStatus {
@@ -30,13 +36,19 @@ impl HTTPStatus {
 pub struct HTTPServer {}
 
 #[derive(Debug)]
-pub struct HTTPGetReq {
+pub struct HTTPReq {
+    pub method: HTTPMethod,
     pub path: Option<String>,
     pub headers: HashMap<String, String>,
 }
 
+#[async_trait]
+pub trait PostHandler: Send + Sync {
+    async fn handle(&self, path: &str, req_body: &[u8]) -> Option<Vec<u8>>;
+}
+
 impl HTTPServer {
-    pub async fn start(content_path: String, is_secure: bool) -> Result<(), Box<dyn Error>> {
+    pub async fn start(content_path: String, is_secure: bool, post_handler: Box<dyn PostHandler>) -> Result<(), Box<dyn Error>> {
         let files = HTTPServer::read_files(content_path.as_str(), &String::from(""))?;
         debug!("Files: {:?}", &files.keys());
         let (acceptor, addr) = if is_secure {
@@ -49,16 +61,18 @@ impl HTTPServer {
         info!("HTTPServer started on {addr}");
 
         let files_arc = Arc::new(files);
+        let handler_arc = Arc::new(post_handler);
         loop {
             let (stream, addr) = listener.accept().await?;
             let files_clone = files_arc.clone();
             let acceptor = acceptor.clone();
+            let handler_clone = handler_arc.clone();
             tokio::spawn(async move {
                 let res = if is_secure {
-                    HTTPServer::handle_secure_connection(stream, &addr, files_clone, acceptor.unwrap()).await
+                    HTTPServer::handle_secure_connection(stream, &addr, files_clone, handler_clone, acceptor.unwrap()).await
                 } else {
                     let (mut reader, mut writer) = tokio::io::split(stream);
-                    HTTPServer::handle_connection(&mut reader, &mut writer, &addr, files_clone).await
+                    HTTPServer::handle_connection(&mut reader, &mut writer, &addr, files_clone, handler_clone).await
                 };
                 if let Err(e) = res {
                     if e.to_string().contains("peer closed connection") {
@@ -107,14 +121,15 @@ impl HTTPServer {
     }
 
     async fn handle_secure_connection(stream: TcpStream, addr: &SocketAddr,
-                                      files: Arc<HashMap<String, Vec<u8>>>, acceptor: TlsAcceptor) -> Result<(), Box<dyn Error>> {
+                                      files: Arc<HashMap<String, Vec<u8>>>, handler: Arc<Box<dyn PostHandler>>,
+                                      acceptor: TlsAcceptor) -> Result<(), Box<dyn Error>> {
         let stream = acceptor.accept(stream).await?;
         let (mut reader, mut writer) = tokio::io::split(stream);
-        HTTPServer::handle_connection(&mut reader, &mut writer, addr, files).await
+        HTTPServer::handle_connection(&mut reader, &mut writer, addr, files, handler).await
     }
 
     async fn handle_connection<R, W>(reader: &mut R, writer: &mut W, addr: &SocketAddr,
-                               files: Arc<HashMap<String, Vec<u8>>>) -> Result<(), Box<dyn Error>>
+                               files: Arc<HashMap<String, Vec<u8>>>, handler: Arc<Box<dyn PostHandler>>) -> Result<(), Box<dyn Error>>
         where R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin {
         let mut keep_alive = true;
         while keep_alive {
@@ -126,13 +141,30 @@ impl HTTPServer {
                 false
             };
             let response = if let Some(path) = req.path {
-                info!("{:?}: GET '{}'", addr.ip(), &path);
-                let filename = path.strip_prefix('/').map(String::from).unwrap_or(path);
-                let filename = if filename.is_empty() {String::from("index.html")} else {filename};
-                if let Some(data) = files.get(filename.as_str()) {
-                    HTTPServer::generate_response(HTTPStatus::Ok, filename.as_str(), data.as_slice(), keep_alive)
-                } else {
-                    HTTPServer::generate_response(HTTPStatus::NotFound, "", &[0], keep_alive)
+                match req.method {
+                    HTTPMethod::Get => {
+                        info!("{:?}: GET '{}'", addr.ip(), &path);
+                        let filename = path.strip_prefix('/').map(String::from).unwrap_or(path);
+                        let filename = if filename.is_empty() {String::from("index.html")} else {filename};
+                        if let Some(data) = files.get(filename.as_str()) {
+                            HTTPServer::generate_response(HTTPStatus::Ok, filename.as_str(), data.as_slice(), keep_alive)
+                        } else {
+                            HTTPServer::generate_response(HTTPStatus::NotFound, "", &[0], keep_alive)
+                        }
+                    }
+                    HTTPMethod::Post => {
+                        let l = req.headers.get("Content-Length").unwrap();
+                        let content_length = l.parse::<usize>().unwrap();
+                        let req_body = HTTPServer::read_req_body(content_length, reader).await?;
+                        if let Some(resp_body) = handler.handle(&path, &req_body).await {
+                            HTTPServer::generate_response(HTTPStatus::Ok, "resp.json", &resp_body, keep_alive)
+                        } else {
+                            HTTPServer::generate_response(HTTPStatus::NotFound, "", &[0], keep_alive)
+                        }
+                    }
+                    HTTPMethod::Unknown => {
+                        HTTPServer::generate_response(HTTPStatus::MethodNotAllowed, "", &[0], keep_alive)
+                    }
                 }
             } else {
                 HTTPServer::generate_response(HTTPStatus::MethodNotAllowed, "", &[0], keep_alive)
@@ -167,18 +199,22 @@ impl HTTPServer {
     fn decode_content_type(filename: &str) -> &str {
         if filename.ends_with("html") {
             "text/html"
+        } else if filename.ends_with("css") {
+            "text/css"
+        } else if filename.ends_with("ico") {
+            "image/x-icon"
         } else if filename.ends_with("js") {
             "application/javascript"
         } else if filename.ends_with("wasm") {
             "application/wasm"
-        } else if filename.ends_with("css") {
-            "text/css"
+        } else if filename.ends_with("json") {
+            "application/json"
         } else {
             "text/plain"
         }
     }
 
-    pub async fn read_http_req<T>(stream: &mut T) -> Result<HTTPGetReq, Box<dyn Error>>
+    pub async fn read_http_req<T>(stream: &mut T) -> Result<HTTPReq, Box<dyn Error>>
         where T: AsyncReadExt + Unpin {
         let mut request = Vec::new();
         let mut new_lines_counter = 0;
@@ -195,24 +231,40 @@ impl HTTPServer {
         Ok(HTTPServer::parse_req(request))
     }
 
-    fn parse_req(req: String) -> HTTPGetReq {
+    fn parse_req(req: String) -> HTTPReq {
+        let mut method = HTTPMethod::Unknown;
         let mut path = None;
         let mut headers = HashMap::new();
         for line in req.split("\r\n") {
             if let Some(path_str) = line.strip_prefix("GET") {
-                let path_str = path_str.trim();
-                let path_str = match path_str.find(' ') {
-                    Some(i) => path_str.split_at(i).0,
-                    None => path_str
-                };
-                path = Some(String::from(path_str));
+                method = HTTPMethod::Get;
+                path = Some(HTTPServer::parse_path(path_str));
+            } else if let Some(path_str) = line.strip_prefix("POST") {
+                method = HTTPMethod::Post;
+                path = Some(HTTPServer::parse_path(path_str));
             } else if let Some(i) = line.find(':') {
                 let (key, value) = line.split_at(i);
                 let value = value.chars().skip(1).collect::<String>();
                 headers.insert(String::from(key.trim()), String::from(value.trim()));
             }
         }
-        HTTPGetReq {path, headers}
+        HTTPReq {method, path, headers}
+    }
+
+    fn parse_path(line: &str) -> String {
+        let path_str = line.trim();
+        let path_str = match path_str.find(' ') {
+            Some(i) => path_str.split_at(i).0,
+            None => path_str
+        };
+        String::from(path_str)
+    }
+
+    async fn read_req_body<T>(content_length: usize, stream: &mut T) -> Result<Vec<u8>, Box<dyn Error>>
+        where T: AsyncReadExt + Unpin {
+        let mut buf = vec![0_u8; content_length];
+        stream.read_exact(&mut buf).await?;
+        Ok(buf)
     }
 
     pub fn create_tls_config() -> Result<ServerConfig, Box<dyn Error>> {

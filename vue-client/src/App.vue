@@ -1,12 +1,14 @@
 <script setup>
 import Room from './components/Room.vue';
 import Login from './components/Login.vue';
+import Create from './components/Create.vue';
 import { EasymundAudio } from './audio';
 import { EasymundSocket } from './ws';
 import { room_state } from './room_state';
 import { event_bus } from './event_bus';
 import { ref } from 'vue';
 
+const room_id = ref(window.location.hash.split('#').pop());
 const started = ref(false);
 /**
  * @type EasymundSocket
@@ -16,6 +18,42 @@ var socket = null;
  * @type EasymundAudio
  */
 var audio = null;
+
+async function create(room_name) {
+    const result = await postRequest("/create", {"name": room_name});
+    const resp = JSON.parse(result);
+    console.log(resp);
+    room_id.value = resp.room_id;
+    window.location.hash = resp.room_id;
+}
+
+/**
+ * @param {String} url 
+ * @param {*} data 
+ */
+function postRequest(url, data) {
+    return new Promise(function (resolve, reject) {
+        let xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.onload = function () {
+            if (this.status >= 200 && this.status < 300) {
+                resolve(xhr.response);
+            } else {
+                reject({
+                    status: this.status,
+                    statusText: xhr.statusText
+                });
+            }
+        };
+        xhr.onerror = function () {
+            reject({
+                status: this.status,
+                statusText: xhr.statusText
+            });
+        };
+        xhr.send(JSON.stringify(data));
+    });
+}
 
 async function start(user_name) {
     event_bus.listen("ws_json", on_ws_json);
@@ -27,7 +65,7 @@ async function start(user_name) {
     event_bus.listen("event_mute", on_mic_switch);
     event_bus.listen("event_leave", on_leave);
 
-    socket = new EasymundSocket("dev-room");
+    socket = new EasymundSocket(room_id.value);
     audio = new EasymundAudio();
     await audio.init();
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
@@ -80,6 +118,7 @@ function on_ws_stream(data) {
 
 function on_ws_json(data) {
     if (data.event === "room") {
+        room_state.name = data.room_name;
         room_state.participants = data.participants;
         room_state.ambiences = data.ambiences;
         room_state.ambience = data.ambience;
@@ -101,8 +140,9 @@ function on_audio_stream(data) {
 </script>
 
 <template>
-    <Login v-if="!started" @event_login="start"/>
-    <Room v-if="started"/>
+    <Create v-if="room_id.length == 0" @event_create="create"/>
+    <Login v-else-if="!started" @event_login="start"/>
+    <Room v-else/>
 </template>
 
 <style>

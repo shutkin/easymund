@@ -4,9 +4,12 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use log::{error, info};
+use log::{debug, error, info};
+use rand::distributions::{Alphanumeric, DistString};
+use serde::{Deserialize, Serialize};
 use tokio::{task, time};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
@@ -16,12 +19,14 @@ use easymund_audio_codec::codec::{Codec, EasymundAudio};
 use crate::ambience::Ambience;
 
 use crate::event_handler::EventHandler;
+use crate::httpserver::PostHandler;
 use crate::wsserver::WSClientEvent;
 
 const SAMPLE_RATE: usize = 44100;
 
 pub struct Easymund {
     packet_size: usize,
+    context: Context,
 }
 
 pub struct Client {
@@ -59,6 +64,7 @@ pub struct ChatMessage {
 }
 
 pub struct Room {
+    pub name: String,
     pub clients: HashSet<u64>,
     pub chat: Vec<ChatMessage>,
     pub ambience_id: String,
@@ -66,8 +72,9 @@ pub struct Room {
 }
 
 impl Room {
-    fn new(ambience_id: &str) -> Room {
+    fn new(name: String, ambience_id: &str) -> Room {
         Room {
+            name,
             clients: HashSet::new(),
             chat: Vec::new(),
             ambience_id: String::from(ambience_id),
@@ -83,21 +90,77 @@ pub struct Context {
     pub ambiences: Arc<Vec<Ambience>>,
 }
 
+struct EasymundPostHandler {
+    pub context: Context,
+}
+
+#[derive(Deserialize)]
+struct RoomCreatePostReq {
+    name: String,
+}
+#[derive(Serialize)]
+struct RoomCreatePostResp {
+    room_id: String,
+}
+
+#[async_trait]
+impl PostHandler for EasymundPostHandler {
+    async fn handle(&self, path: &str, req_body: &[u8]) -> Option<Vec<u8>> {
+        debug!("Handle POST req {}", path);
+        match path {
+            "/create" => {
+                match self.handle_create(req_body).await {
+                    Ok(resp) => Some(resp.into_bytes()),
+                    Err(e) => {
+                        error!("Failed to handle /create req: {:?}", e);
+                        None
+                    }
+                }
+            }
+            _ => None
+        }
+    }
+}
+
+impl EasymundPostHandler {
+    async fn handle_create(&self, req_body: &[u8]) -> Result<String, Box<dyn Error>> {
+        let req: RoomCreatePostReq = serde_json::from_slice(req_body)?;
+        let room_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 12);
+        let room = Room::new(req.name, &self.context.ambiences[0].id);
+        info!("Create room {} with id {}", &room.name, &room_id);
+        self.context.rooms.lock().await.insert(room_id.clone(), room);
+        let resp = serde_json::to_string(&RoomCreatePostResp { room_id })?;
+        Ok(resp)
+    }
+}
+
 impl Easymund {
     pub fn create() -> Self {
+        let ambiences = match Ambience::read_dir("sounds") {
+            Ok(list) => list,
+            Err(e) => {
+                error!("Failed to read ambiences: {:?}", e);
+                Vec::new()
+            }
+        };
         Self {
             packet_size: easymund_audio_codec::default_packet_size(),
+            context: Context {
+                clients: Arc::new(Mutex::new(HashMap::new())),
+                rooms: Arc::new(Mutex::new(HashMap::new())),
+                ambiences: Arc::new(ambiences)
+            }
         }
     }
 
+    pub fn get_post_handler(&self) -> Box<dyn PostHandler> {
+        Box::new(EasymundPostHandler {
+            context: self.context.clone(),
+        })
+    }
+
     pub async fn start(&self, mut events_channel: Receiver<WSClientEvent>, command_channel: Sender<WSClientEvent>) -> Result<(), Box<dyn Error>> {
-        let ambiences = Ambience::read_dir("sounds")?;
-        let context = Context {
-            clients: Arc::new(Mutex::new(HashMap::new())),
-            rooms: Arc::new(Mutex::new(HashMap::new())),
-            ambiences: Arc::new(ambiences)
-        };
-        let context_clone = context.clone();
+        let context_clone = self.context.clone();
         let easymund_audio = EasymundAudio::new(SAMPLE_RATE, 1, 16);
         let tick_time = 1_000_000_u64 * self.packet_size as u64 / SAMPLE_RATE as u64;
         let packet_size = self.packet_size;
@@ -110,7 +173,7 @@ impl Easymund {
             }
         });
 
-        let context_clone = context.clone();
+        let context_clone = self.context.clone();
         let sender = command_channel.clone();
         while let Some(event) = events_channel.recv().await {
             if !event.is_connected {
@@ -127,14 +190,14 @@ impl Easymund {
     }
 
     async fn handle_client_connected(client_id: u64, path: String, context: &Context, easymund_audio: &EasymundAudio, packet_size: usize) {
-        let room_name = path.strip_prefix('/').map(String::from).unwrap_or(path);
-        info!("Client {} connect to room {:?}", client_id, &room_name);
-        context.clients.lock().await.insert(client_id, Client::new(&room_name, easymund_audio, packet_size));
+        let room_id = path.strip_prefix('/').map(String::from).unwrap_or(path);
+        info!("Client {} connect to room {:?}", client_id, &room_id);
+        context.clients.lock().await.insert(client_id, Client::new(&room_id, easymund_audio, packet_size));
         let mut lock = context.rooms.lock().await;
-        if !lock.contains_key(&room_name) {
-            lock.insert(room_name.clone(), Room::new(&context.ambiences[0].id));
+        if !lock.contains_key(&room_id) {
+            lock.insert(room_id.clone(), Room::new(String::from("undefined"), &context.ambiences[0].id));
         }
-        lock.get_mut(room_name.as_str()).unwrap().clients.insert(client_id);
+        lock.get_mut(room_id.as_str()).unwrap().clients.insert(client_id);
     }
 
     async fn handle_client_disconnect(client_id: u64, context: &Context, sender: &Sender<WSClientEvent>) {

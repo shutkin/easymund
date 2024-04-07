@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct EasymundEvent {
     pub event: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub participant: Option<Participant>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ambience: Option<String>,
@@ -43,9 +45,10 @@ pub struct ChatMessage {
     pub time: String,
 }
 
-pub fn room(participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {
+pub fn room(name: String, participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {
     EasymundEvent {
         event: String::from("room"),
+        room_name: Some(name),
         participants: Some(participants),
         ambiences: Some(ambiences),
         ambience,
@@ -61,6 +64,7 @@ pub fn participants(participants: Vec<Participant>) -> EasymundEvent {
     EasymundEvent {
         event: String::from("participants"),
         participants: Some(participants),
+        room_name: None,
         ambiences: None,
         ambience: None,
         participant: None,
@@ -71,6 +75,7 @@ pub fn participants(participants: Vec<Participant>) -> EasymundEvent {
 pub fn ambience(ambience: String) -> EasymundEvent {
     EasymundEvent {
         event: String::from("ambience"),
+        room_name: None,
         participants: None,
         ambiences: None,
         ambience: Some(ambience),
@@ -82,6 +87,7 @@ pub fn ambience(ambience: String) -> EasymundEvent {
 pub fn leave() -> EasymundEvent {
     EasymundEvent {
         event: String::from("leave"),
+        room_name: None,
         participants: None,
         ambiences: None,
         ambience: None,
@@ -93,6 +99,7 @@ pub fn leave() -> EasymundEvent {
 pub fn chat_message(chat_message: ChatMessage) -> EasymundEvent {
     EasymundEvent {
         event: String::from("chat"),
+        room_name: None,
         participants: None,
         ambiences: None,
         ambience: None,

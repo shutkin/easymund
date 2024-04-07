@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_rustls::TlsAcceptor;
 
-use crate::httpserver::{HTTPGetReq, HTTPServer};
+use crate::httpserver::{HTTPReq, HTTPServer};
 
 #[derive(Debug, Clone)]
 pub struct WSClientEvent {
@@ -223,7 +223,7 @@ impl WSServer {
         Ok((opcode, payload))
     }
 
-    fn parse_handshake(handshake: &HTTPGetReq) -> Result<(String, String), WSError> {
+    fn parse_handshake(handshake: &HTTPReq) -> Result<(String, String), WSError> {
         let path = handshake.path.clone();
         let upgrade = handshake.headers.get(&String::from("Upgrade"));
         let ws_key = handshake.headers.get(&String::from("Sec-WebSocket-Key"));

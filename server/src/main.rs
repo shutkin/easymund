@@ -35,19 +35,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config: Config = serde_yaml::from_reader(config_file).unwrap();
     info!("{:?}", &config);
 
-    if config.http.is_secure {
-        tokio::spawn(async {
-            if let Err(e) = HTTPServer::start(config.http.content_path, true).await {
-                error!("Failed to start HTTP server: {:?}", e);
-            }
-        });
-    } else {
-        tokio::spawn(async {
-            if let Err(e) = HTTPServer::start(config.http.content_path, false).await {
-                error!("Failed to start HTTP server: {:?}", e);
-            }
-        });
-    }
     let (event_sender, event_receiver) = mpsc::channel(8);
     let (command_sender, command_receiver) = mpsc::channel(8);
     tokio::spawn(async move {
@@ -56,6 +43,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
     let easymund = Easymund::create();
+    let post_handler = easymund.get_post_handler();
+    if config.http.is_secure {
+        tokio::spawn(async {
+            if let Err(e) = HTTPServer::start(config.http.content_path, true,
+                                              post_handler).await {
+                error!("Failed to start HTTP server: {:?}", e);
+            }
+        });
+    } else {
+        tokio::spawn(async {
+            if let Err(e) = HTTPServer::start(config.http.content_path, false,
+                                              post_handler).await {
+                error!("Failed to start HTTP server: {:?}", e);
+            }
+        });
+    }
+
     easymund.start(event_receiver, command_sender).await?;
     Ok(())
 }

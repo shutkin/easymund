@@ -14,16 +14,16 @@ struct ClientEvent {
 
 #[async_trait]
 trait Handler {
-    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
-        -> Vec<ClientEvent>;
+    async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent>;
 }
 
 struct JoinHandler {}
 
 #[async_trait]
 impl Handler for JoinHandler {
-    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
-        -> Vec<ClientEvent> {
+    async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent> {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             let participant = Participant {
                 name: event.participant.unwrap_or_default().name.unwrap_or(format!("{}", client_id)),
@@ -32,18 +32,20 @@ impl Handler for JoinHandler {
             info!("Client {}: {:?}", client_id, &participant);
             client.participant = Some(participant);
         }
-        JoinHandler::join_events(client_id, room_name, context).await
+        JoinHandler::join_events(client_id, room_id, context).await
     }
 }
 
 impl JoinHandler {
-    async fn join_events(new_client_id: u64, room_name: &str, context: &Context) -> Vec<ClientEvent> {
+    async fn join_events(new_client_id: u64, room_id: &str, context: &Context) -> Vec<ClientEvent> {
         let mut participants = Vec::new();
         let mut other_clients_ids = Vec::new();
         let mut chat = Vec::new();
         let mut ambience = None;
-        if let Some(room) = context.rooms.lock().await.get(room_name) {
+        let mut room_name = None;
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
             ambience = Some(room.ambience_id.clone());
+            room_name = Some(room.name.clone());
             for client_id in &room.clients {
                 if let Some(client) = context.clients.lock().await.get(client_id) {
                     if let Some(participant) = &client.participant {
@@ -66,7 +68,7 @@ impl JoinHandler {
         let mut events = Vec::with_capacity(other_clients_ids.len() + 1);
         events.push(ClientEvent {
             client_id: new_client_id,
-            event: dto::room(participants.clone(), ambiences, ambience, chat),
+            event: dto::room(room_name.unwrap_or_default(), participants.clone(), ambiences, ambience, chat),
         });
         for client_id in other_clients_ids {
             events.push(ClientEvent {client_id, event: dto::participants(participants.clone())});
@@ -79,9 +81,9 @@ struct LeaveHandler {}
 
 #[async_trait]
 impl Handler for LeaveHandler {
-    async fn handle(&self, _: u64, room_name: &str, _: dto::EasymundEvent, context: &Context)
-        -> Vec<ClientEvent> {
-        EventHandler::update_room_participants(room_name, context, None).await
+    async fn handle(&self, _: u64, room_id: &str, _: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent> {
+        EventHandler::update_room_participants(room_id, context, None).await
     }
 }
 
@@ -89,11 +91,11 @@ struct AmbienceHandler {}
 
 #[async_trait]
 impl Handler for AmbienceHandler {
-    async fn handle(&self, _: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
-        -> Vec<ClientEvent> {
+    async fn handle(&self, _: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent> {
         let ambience = event.ambience.unwrap_or_default();
         let mut clients_ids = Vec::new();
-        if let Some(room) = context.rooms.lock().await.get_mut(room_name) {
+        if let Some(room) = context.rooms.lock().await.get_mut(room_id) {
             room.ambience_id = ambience.clone();
             room.ambience_position = 0;
             for client_id in &room.clients {
@@ -112,15 +114,15 @@ struct ParticipantHandler {}
 
 #[async_trait]
 impl Handler for ParticipantHandler {
-    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
-        -> Vec<ClientEvent> {
+    async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
+                    -> Vec<ClientEvent> {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             if let Some(participant) = &mut client.participant {
                 participant.is_muted = event.participant.unwrap_or_default().is_muted;
                 info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
             }
         }
-        EventHandler::update_room_participants(room_name, context, None).await
+        EventHandler::update_room_participants(room_id, context, None).await
     }
 }
 
@@ -128,7 +130,7 @@ struct ChatHandler {}
 
 #[async_trait]
 impl Handler for ChatHandler {
-    async fn handle(&self, client_id: u64, room_name: &str, event: dto::EasymundEvent, context: &Context)
+    async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
                     -> Vec<ClientEvent> {
         let text = event.chat.unwrap_or_default().message.unwrap_or_default();
         let mut participant_name = String::new();
@@ -139,7 +141,7 @@ impl Handler for ChatHandler {
         }
 
         let mut events = Vec::new();
-        if let Some(room) = context.rooms.lock().await.get_mut(room_name) {
+        if let Some(room) = context.rooms.lock().await.get_mut(room_id) {
             let id = room.chat.len() as u64;
             let chat_message = ChatMessage {
                 id,
@@ -180,11 +182,11 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
-    async fn update_room_participants(room_name: &str, context: &Context, except_client: Option<u64>)
-                    -> Vec<ClientEvent> {
+    async fn update_room_participants(room_id: &str, context: &Context, except_client: Option<u64>)
+                                      -> Vec<ClientEvent> {
         let mut participants = Vec::new();
         let mut clients_ids = Vec::new();
-        if let Some(room) = context.rooms.lock().await.get(room_name) {
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
             for client_id in &room.clients {
                 if except_client.map_or(false, |id| *client_id == id) {
                     continue;
@@ -221,12 +223,12 @@ impl EventHandler {
             Ok(event) => {
                 debug!("Client {}: {:?}", client_id, &event);
                 if let Some(handler) = EventHandler::get_handler(event.event.clone().as_str()) {
-                    let mut room_name = None;
+                    let mut room_id = None;
                     if let Some(client) = context.clients.lock().await.get(&client_id) {
-                        room_name = Some(client.room.clone());
+                        room_id = Some(client.room.clone());
                     }
-                    if let Some(room_name) = room_name {
-                        EventHandler::handle_and_send(client_id, &room_name, event, handler, context, sender).await;
+                    if let Some(room_id) = room_id {
+                        EventHandler::handle_and_send(client_id, &room_id, event, handler, context, sender).await;
                     } else {
                         error!("Unknown client {}", client_id);
                     }
@@ -240,9 +242,9 @@ impl EventHandler {
         }
     }
 
-    async fn handle_and_send(client_id: u64, room_name: &str, event: dto::EasymundEvent, handler: &dyn Handler,
+    async fn handle_and_send(client_id: u64, room_id: &str, event: dto::EasymundEvent, handler: &dyn Handler,
                              context: &Context, sender: &Sender<WSClientEvent>) {
-        let events = handler.handle(client_id, room_name, event, context).await;
+        let events = handler.handle(client_id, room_id, event, context).await;
         for event in &events {
             let json = serde_json::to_string(&event.event).unwrap();
             if let Err(e) = sender.send(WSClientEvent {
@@ -256,7 +258,7 @@ impl EventHandler {
         }
     }
 
-    pub async fn handle_room_update(client_id: u64, room_name: &str, context: &Context, sender: &Sender<WSClientEvent>) {
-        EventHandler::handle_and_send(client_id, room_name, dto::leave(), &LeaveHandler{}, context, sender).await;
+    pub async fn handle_room_update(client_id: u64, room_id: &str, context: &Context, sender: &Sender<WSClientEvent>) {
+        EventHandler::handle_and_send(client_id, room_id, dto::leave(), &LeaveHandler{}, context, sender).await;
     }
 }

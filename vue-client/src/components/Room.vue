@@ -23,6 +23,9 @@ function on_ambience() {
     <section class="cls_main_cnt">
         <Chat/>
         <div class="cls_room_cnt">
+            <div class="cls_room_title">
+                <h3>{{ room_state.name }}</h3>
+            </div>
             <div class="cls_room_participants">
                 <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant="participant"/>
             </div>
@@ -57,7 +60,8 @@ function on_ambience() {
         border-radius: 0.5em;
         box-shadow: 0 0.5em 1em rgba(0, 0, 0, 0.25);
     }
-    .cls_room_cnt {display: grid; grid-template-rows: 1fr 3.5em;}
+    .cls_room_cnt {display: grid; grid-template-rows: 2.5em 1fr 3.5em;}
+    .cls_room_title {text-align: center;}
     .cls_room_participants {padding: 0.5em; display: flex; overflow: auto;}
     .cls_room_controls {
         padding: 0.5em;
