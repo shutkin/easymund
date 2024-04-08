@@ -18,6 +18,10 @@ var socket = null;
  * @type EasymundAudio
  */
 var audio = null;
+/**
+ * @type boolean
+ */
+var is_error = false;
 
 async function create(room_name) {
     const result = await postRequest("/create", {"name": room_name});
@@ -58,33 +62,32 @@ function postRequest(url, data) {
 async function start(user_name) {
     event_bus.listen("ws_json", on_ws_json);
     event_bus.listen("ws_stream", on_ws_stream);
-    event_bus.listen("audio_log", (event) => { console.log("Audio log: " + event.data); });
+    event_bus.listen("audio_log", (data) => { console.log("Audio log: " + data); });
     event_bus.listen("audio_stream", on_audio_stream);
     event_bus.listen("event_chat", on_chat);
     event_bus.listen("event_ambience", on_ambience);
     event_bus.listen("event_mute", on_mic_switch);
     event_bus.listen("event_leave", on_leave);
 
-    socket = new EasymundSocket(room_id.value);
     audio = new EasymundAudio();
     await audio.init();
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
-    started.value = true;
 
+    socket = new EasymundSocket(room_id.value);
     socket.send_message({type: "json", data: {event: "join", participant:{name: user_name, is_muted: room_state.is_muted}}});
 }
 
 function on_leave() {
     if (started.value) {
-        if (socket != null) {
-            socket.close();
-            socket = null;
-        }
-        if (audio != null) {
-            audio.close();
-            audio = null;
-        }
         started.value = false;
+    }
+    if (socket != null) {
+        socket.close();
+        socket = null;
+    }
+    if (audio != null) {
+        audio.close();
+        audio = null;
     }
     room_state.participants = [];
     room_state.is_muted = true;
@@ -123,12 +126,20 @@ function on_ws_json(data) {
         room_state.ambiences = data.ambiences;
         room_state.ambience = data.ambience;
         room_state.chat = data.chat.history;
+        started.value = true;
     } else if (data.event === "participants") {
         room_state.participants = data.participants;
     } else if (data.event === "ambience") {
         room_state.ambience = data.ambience;
     } else if (data.event === "chat") {
         room_state.chat.push(data.chat.history.pop());
+    } else if (data.event === "error") {
+        if (!is_error) {
+            is_error = true;
+            on_leave();
+            window.alert(data.error);
+            window.location = "/";
+        }
     }
 }
 
@@ -140,7 +151,7 @@ function on_audio_stream(data) {
 </script>
 
 <template>
-    <Create v-if="room_id.length == 0" @event_create="create"/>
+    <Create v-if="room_id.length < 2" @event_create="create"/>
     <Login v-else-if="!started" @event_login="start"/>
     <Room v-else/>
 </template>

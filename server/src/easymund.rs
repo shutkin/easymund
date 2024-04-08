@@ -17,6 +17,7 @@ use wav::{BitDepth, Header};
 
 use easymund_audio_codec::codec::{Codec, EasymundAudio};
 use crate::ambience::Ambience;
+use crate::dto;
 
 use crate::event_handler::EventHandler;
 use crate::httpserver::PostHandler;
@@ -38,9 +39,9 @@ pub struct Client {
 }
 
 impl Client {
-    fn new(room_name: &str, easymun_audio: &EasymundAudio, packet_size: usize) -> Client {
+    fn new(room_id: &str, easymun_audio: &EasymundAudio, packet_size: usize) -> Client {
         Client {
-            room: String::from(room_name),
+            room: String::from(room_id),
             stream: vec![0.0; packet_size / 2],
             stream_send_position: 0,
             codec: easymun_audio.create_codec(packet_size).unwrap(),
@@ -179,7 +180,8 @@ impl Easymund {
             if !event.is_connected {
                 Easymund::handle_client_disconnect(event.client_id, &context_clone, &sender).await;
             } else if !context_clone.clients.lock().await.contains_key(&event.client_id) {
-                Easymund::handle_client_connected(event.client_id, event.text_message.unwrap_or_default(), &context_clone, &easymund_audio, packet_size).await;
+                Easymund::handle_client_connected(event.client_id, event.text_message.unwrap_or_default(),
+                                                  &context_clone, &easymund_audio, packet_size, &sender).await;
             } else if let Some(text) = event.text_message {
                 EventHandler::handle_client_event(event.client_id, text, &context_clone, &sender).await;
             } else if let Some(data) = event.binary_message {
@@ -189,15 +191,26 @@ impl Easymund {
         Ok(())
     }
 
-    async fn handle_client_connected(client_id: u64, path: String, context: &Context, easymund_audio: &EasymundAudio, packet_size: usize) {
+    async fn handle_client_connected(client_id: u64, path: String, context: &Context,
+                                     easymund_audio: &EasymundAudio, packet_size: usize, sender: &Sender<WSClientEvent>) {
         let room_id = path.strip_prefix('/').map(String::from).unwrap_or(path);
         info!("Client {} connect to room {:?}", client_id, &room_id);
-        context.clients.lock().await.insert(client_id, Client::new(&room_id, easymund_audio, packet_size));
-        let mut lock = context.rooms.lock().await;
-        if !lock.contains_key(&room_id) {
-            lock.insert(room_id.clone(), Room::new(String::from("undefined"), &context.ambiences[0].id));
+        let room_exists = context.rooms.lock().await.contains_key(&room_id);
+        if room_exists {
+            context.clients.lock().await.insert(client_id, Client::new(&room_id, easymund_audio, packet_size));
+            context.rooms.lock().await.get_mut(room_id.as_str()).unwrap().clients.insert(client_id);
+        } else {
+            let event = dto::error_event(format!("Конференция не существует"));
+            let json = serde_json::to_string(&event).unwrap();
+            if let Err(e) = sender.send(WSClientEvent {
+                client_id,
+                is_connected: true,
+                text_message: Some(json),
+                binary_message: None,
+            }).await {
+                error!("Failed to send error event to client {}: {:?}", client_id, e);
+            }
         }
-        lock.get_mut(room_id.as_str()).unwrap().clients.insert(client_id);
     }
 
     async fn handle_client_disconnect(client_id: u64, context: &Context, sender: &Sender<WSClientEvent>) {

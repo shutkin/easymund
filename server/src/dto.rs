@@ -15,6 +15,8 @@ pub struct EasymundEvent {
     pub chat: Option<Chat>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ambiences: Option<Vec<Ambience>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -57,6 +59,7 @@ pub fn room(name: String, participants: Vec<Participant>, ambiences: Vec<Ambienc
             message: None,
             history: Some(chat),
         }),
+        error: None,
     }
 }
 
@@ -69,6 +72,7 @@ pub fn participants(participants: Vec<Participant>) -> EasymundEvent {
         ambience: None,
         participant: None,
         chat: None,
+        error: None,
     }
 }
 
@@ -81,6 +85,7 @@ pub fn ambience(ambience: String) -> EasymundEvent {
         ambience: Some(ambience),
         participant: None,
         chat: None,
+        error: None,
     }
 }
 
@@ -93,6 +98,7 @@ pub fn leave() -> EasymundEvent {
         ambience: None,
         participant: None,
         chat: None,
+        error: None,
     }
 }
 
@@ -108,5 +114,19 @@ pub fn chat_message(chat_message: ChatMessage) -> EasymundEvent {
             message: None,
             history: Some(vec![chat_message]),
         }),
+        error: None,
+    }
+}
+
+pub fn error_event(error: String) -> EasymundEvent {
+    EasymundEvent {
+        event: String::from("error"),
+        room_name: None,
+        participants: None,
+        ambiences: None,
+        ambience: None,
+        participant: None,
+        chat: None,
+        error: Some(error),
     }
 }
