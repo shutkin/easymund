@@ -65,6 +65,7 @@ async function start(user_name) {
     event_bus.listen("audio_log", (data) => { console.log("Audio log: " + data); });
     event_bus.listen("audio_stream", on_audio_stream);
     event_bus.listen("event_chat", on_chat);
+    event_bus.listen("event_screen", on_screen);
     event_bus.listen("event_ambience", on_ambience);
     event_bus.listen("event_mute", on_mic_switch);
     event_bus.listen("event_leave", on_leave);
@@ -93,6 +94,27 @@ function on_leave() {
     room_state.is_muted = true;
     room_state.chat = [];
     room_state.ambience = "";
+}
+
+async function on_screen() {
+    try {
+        const video_elem = document.getElementById("video");
+        const display_options = {
+            video: {
+                displaySurface: "window",
+            },
+            audio: false
+        };
+        video_elem.srcObject = await navigator.mediaDevices.getDisplayMedia(display_options);
+        const track = video_elem.srcObject.getVideoTracks()[0];
+
+        console.log("Track settings:");
+        console.log(JSON.stringify(track.getSettings(), null, 2));
+        console.log("Track constraints:");
+        console.log(JSON.stringify(track.getConstraints(), null, 2));
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 function on_ambience(data) {
