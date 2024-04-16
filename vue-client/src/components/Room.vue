@@ -36,7 +36,7 @@ set_ambience(room_state.ambience);
                 <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant="participant"/>
             </div>
             <div class="cls_room_screen">
-                <video id="video" autoplay="autoplay" style="width: 100%; background-color: black;"></video>
+                <video id="video" autoplay="autoplay" style="width: 100%; height: 100%;"></video>
             </div>
             <div class="cls_room_controls">
                 <button class="cls_button" style="width: 6em;" @click="event_bus.fire({type: 'event_mute', data: {}})">

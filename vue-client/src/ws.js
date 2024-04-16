@@ -75,7 +75,13 @@ class EasymundSocket {
      * @param {ArrayBuffer} data 
      */
     receive_frame(data) {
-        event_bus.fire({type: "ws_stream", data: new Uint8Array(data)});
+        const first_byte = new Uint8Array(data, 0, 1);
+        const frame_data = new Uint8Array(data, 1);
+        if (first_byte[0] == 0) {
+            event_bus.fire({type: "ws_audio", data: frame_data});
+        } else {
+            event_bus.fire({type: "ws_video", data: frame_data});
+        }
     }
 
     /**
@@ -83,8 +89,16 @@ class EasymundSocket {
      * @param {Event} event
      */
     send_message(event) {
-        if (event.type === "stream") {
-            this.send_frame(event.data);
+        if (event.type === "audio") {
+            const data = new Uint8Array(event.data.length + 1);
+            data[0] = 0;
+            data.set(event.data, 1);
+            this.send_frame(data);
+        } else if (event.type === "video") {
+            const data = new Uint8Array(event.data.length + 1);
+            data[0] = 1;
+            data.set(event.data, 1);
+            this.send_frame(data);
         } else if (event.type === "json") {
             this.send_text(JSON.stringify(event.data));
         }

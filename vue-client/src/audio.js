@@ -19,7 +19,7 @@ class EasymundAudio {
             console.log("Loaded wasm " + wasm_bytes.byteLength + " bytes");
 
             this.context = new AudioContext({sampleRate: 44100});
-            const stream = await navigator.mediaDevices.getUserMedia({audio: {noiseSuppression: false, echoCancellation: false, autoGainControl: true}, video: false});
+            const stream = await navigator.mediaDevices.getUserMedia({audio: {noiseSuppression: false, echoCancellation: false, autoGainControl: false}, video: false});
             console.log("Mic stream", stream);
             this.source = this.context.createMediaStreamSource(stream);
             await this.context.audioWorklet.addModule("wasm_processor.js");

@@ -208,7 +208,9 @@ impl WSServer {
             return Err(Box::new(WSError::new(String::from("Message without mask"))));
         }
         let length = header1 & 0x7F;
-        let length = if length <= 125 { length as usize } else if length == 126 {
+        let length = if length <= 125 {
+            length as usize
+        } else if length == 126 {
             stream.read_u16().await? as usize
         } else {
             stream.read_u64().await? as usize
@@ -271,7 +273,7 @@ impl WSServer {
             result.push((command.data.len() >> 8) as u8);
             result.push(command.data.len() as u8);
         } else {
-            let len_bytes = command.data.len().to_be_bytes();
+            let len_bytes = command.data.len().to_le_bytes();
             result.push(127);
             for i in 0..8 {
                 let be_index = 7 - i;

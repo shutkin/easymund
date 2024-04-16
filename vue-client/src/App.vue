@@ -3,6 +3,7 @@ import Room from './components/Room.vue';
 import Login from './components/Login.vue';
 import Create from './components/Create.vue';
 import { EasymundAudio } from './audio';
+import { EasymundScreenShare } from './screen_share';
 import { EasymundSocket } from './ws';
 import { room_state } from './room_state';
 import { event_bus } from './event_bus';
@@ -18,6 +19,10 @@ var socket = null;
  * @type EasymundAudio
  */
 var audio = null;
+/**
+ * @type EasymundScreenShare
+ */
+var screen_share = new EasymundScreenShare();
 /**
  * @type boolean
  */
@@ -61,9 +66,11 @@ function postRequest(url, data) {
 
 async function start(user_name) {
     event_bus.listen("ws_json", on_ws_json);
-    event_bus.listen("ws_stream", on_ws_stream);
+    event_bus.listen("ws_audio", on_ws_audio);
+    event_bus.listen("ws_video", on_ws_video);
     event_bus.listen("audio_log", (data) => { console.log("Audio log: " + data); });
     event_bus.listen("audio_stream", on_audio_stream);
+    event_bus.listen("video_stream", on_video_stream);
     event_bus.listen("event_chat", on_chat);
     event_bus.listen("event_screen", on_screen);
     event_bus.listen("event_ambience", on_ambience);
@@ -97,23 +104,14 @@ function on_leave() {
 }
 
 async function on_screen() {
-    try {
-        const video_elem = document.getElementById("video");
-        const display_options = {
-            video: {
-                displaySurface: "window",
-            },
-            audio: false
-        };
-        video_elem.srcObject = await navigator.mediaDevices.getDisplayMedia(display_options);
-        const track = video_elem.srcObject.getVideoTracks()[0];
-
-        console.log("Track settings:");
-        console.log(JSON.stringify(track.getSettings(), null, 2));
-        console.log("Track constraints:");
-        console.log(JSON.stringify(track.getConstraints(), null, 2));
-    } catch (err) {
-        console.error(err);
+    if (!room_state.is_screen_sharing) {
+        await screen_share.start_share();
+        room_state.is_screen_sharing = true;
+        socket.send_message({type: "json", data: {event: "video_start"}});
+    } else {
+        screen_share.stop_share();
+        room_state.is_screen_sharing = false;
+        socket.send_message({type: "json", data: {event: "video_stop"}});
     }
 }
 
@@ -135,10 +133,14 @@ function on_chat(data) {
     socket.send_message({type: "json", data: {event: "chat", chat: {message: data}}});
 }
 
-function on_ws_stream(data) {
+function on_ws_audio(data) {
     if (audio != null) {
         audio.send_message({type: "audio_stream", data: data});
     }
+}
+
+function on_ws_video(data) {
+    screen_share.video_frame(data);
 }
 
 function on_ws_json(data) {
@@ -167,7 +169,13 @@ function on_ws_json(data) {
 
 function on_audio_stream(data) {
     if (socket != null) {
-        socket.send_message({type: "stream", data});
+        socket.send_message({type: "audio", data});
+    }
+}
+
+function on_video_stream(data) {
+    if (socket != null) {
+        socket.send_message({type: "video", data});
     }
 }
 </script>

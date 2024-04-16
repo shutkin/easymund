@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use async_trait::async_trait;
 use chrono::Utc;
 use log::{debug, error, info};
@@ -178,6 +180,38 @@ fn chat_msg_convert(message: &ChatMessage) -> dto::ChatMessage {
     }
 }
 
+struct VideoStartHandler {}
+
+#[async_trait]
+impl Handler for VideoStartHandler {
+    async fn handle(&self, client_id: u64, room_id: &str, _event: dto::EasymundEvent, _context: &Context) -> Vec<ClientEvent> {
+        info!("Client {} started video stream in room {}", client_id, room_id);
+        Vec::new()
+    }
+}
+
+struct VideoStopHandler {}
+
+#[async_trait]
+impl Handler for VideoStopHandler {
+    async fn handle(&self, client_id: u64, room_id: &str, _event: dto::EasymundEvent, context: &Context) -> Vec<ClientEvent> {
+        info!("Client {} finished video stream in room {}", client_id, room_id);
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
+            if !room.video.is_empty() {
+                let filename = format!("{}.webm", room_id);
+                if let Ok(mut file) = File::create(&filename) {
+                    for chunk in &room.video {
+                        if let Err(e) = file.write_all(chunk) {
+                            error!("Failed to save room video: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+        Vec::new()
+    }
+}
+
 pub struct EventHandler {
 }
 
@@ -214,6 +248,8 @@ impl EventHandler {
             "ambience" => Some(&AmbienceHandler{}),
             "participant" => Some(&ParticipantHandler{}),
             "chat" => Some(&ChatHandler{}),
+            "video_start" => Some(&VideoStartHandler{}),
+            "video_stop" => Some(&VideoStopHandler{}),
             _ => None
         }
     }

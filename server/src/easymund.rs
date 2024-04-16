@@ -4,9 +4,9 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-
 use log::{debug, error, info};
 use rand::distributions::{Alphanumeric, DistString};
 use serde::{Deserialize, Serialize};
@@ -16,9 +16,9 @@ use tokio::sync::Mutex;
 use wav::{BitDepth, Header};
 
 use easymund_audio_codec::codec::{Codec, EasymundAudio};
+
 use crate::ambience::Ambience;
 use crate::dto;
-
 use crate::event_handler::EventHandler;
 use crate::httpserver::PostHandler;
 use crate::wsserver::WSClientEvent;
@@ -70,6 +70,7 @@ pub struct Room {
     pub chat: Vec<ChatMessage>,
     pub ambience_id: String,
     pub ambience_position: usize,
+    pub video: Vec<Vec<u8>>,
 }
 
 impl Room {
@@ -80,6 +81,7 @@ impl Room {
             chat: Vec::new(),
             ambience_id: String::from(ambience_id),
             ambience_position: 0,
+            video: Vec::new(),
         }
     }
 }
@@ -137,13 +139,10 @@ impl EasymundPostHandler {
 
 impl Easymund {
     pub fn create() -> Self {
-        let ambiences = match Ambience::read_dir("sounds") {
-            Ok(list) => list,
-            Err(e) => {
-                error!("Failed to read ambiences: {:?}", e);
-                Vec::new()
-            }
-        };
+        let ambiences = Ambience::read_dir("sounds").unwrap_or_else(|e| {
+            error!("Failed to read ambiences: {:?}", e);
+            Vec::new()
+        });
         Self {
             packet_size: easymund_audio_codec::default_packet_size(),
             context: Context {
@@ -185,7 +184,7 @@ impl Easymund {
             } else if let Some(text) = event.text_message {
                 EventHandler::handle_client_event(event.client_id, text, &context_clone, &sender).await;
             } else if let Some(data) = event.binary_message {
-                Easymund::handle_client_stream(event.client_id, data.as_slice(), &context_clone).await;
+                Easymund::handle_client_stream(event.client_id, data.as_slice(), &context_clone, &sender).await;
             }
         }
         Ok(())
@@ -199,8 +198,9 @@ impl Easymund {
         if room_exists {
             context.clients.lock().await.insert(client_id, Client::new(&room_id, easymund_audio, packet_size));
             context.rooms.lock().await.get_mut(room_id.as_str()).unwrap().clients.insert(client_id);
+            Easymund::send_video_to_new_client(client_id, &room_id, &context, &sender).await;
         } else {
-            let event = dto::error_event(format!("Конференция не существует"));
+            let event = dto::error_event(format!("Конференция {} не существует", &room_id));
             let json = serde_json::to_string(&event).unwrap();
             if let Err(e) = sender.send(WSClientEvent {
                 client_id,
@@ -210,6 +210,30 @@ impl Easymund {
             }).await {
                 error!("Failed to send error event to client {}: {:?}", client_id, e);
             }
+        }
+    }
+    
+    async fn send_video_to_new_client(client_id: u64, room_id: &str, context: &Context, sender: &Sender<WSClientEvent>) {
+        let mut frames = Vec::new();
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
+            frames = room.video.clone();
+        }
+        if !frames.is_empty() {
+            let sender = sender.clone();
+            //let frames = Arc::new(frames);
+            task::spawn(async move {
+                for video_data in frames.as_slice() {
+                    time::sleep(Duration::from_millis(500)).await;
+                    let mut frame = Vec::with_capacity(video_data.len() + 1);
+                    frame.push(1);
+                    frame.extend_from_slice(video_data);
+                    info!("Send video {} frame to new client {}", frame.len(), client_id);
+                    let event = WSClientEvent {client_id, is_connected: true, text_message: None, binary_message: Some(frame)};
+                    if let Err(e) = sender.send(event).await {
+                        error!("Failed to send video to new client: {:?}", e);
+                    }
+                }
+            });
         }
     }
 
@@ -239,7 +263,17 @@ impl Easymund {
         }
     }
 
-    async fn handle_client_stream(client_id: u64, data: &[u8], context: &Context) {
+    async fn handle_client_stream(client_id: u64, data: &[u8], context: &Context, sender: &Sender<WSClientEvent>) {
+        let first_byte = data[0];
+        let data = &data[1..data.len()];
+        match first_byte {
+            0 => Easymund::handle_client_audio(client_id, data, context).await,
+            1 => Easymund::handle_client_video(client_id, data, context, sender).await,
+            _ => error!("Unknown stream type {}", first_byte)
+        }
+    }
+
+    async fn handle_client_audio(client_id: u64, data: &[u8], context: &Context) {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             match client.codec.decode(data) {
                 Ok(decoded_res) => {
@@ -247,6 +281,36 @@ impl Easymund {
                     client.stream.extend_from_slice(decoded[0].as_slice());
                 }
                 Err(e) => {error!("Failed to decode: {:?}", e);}
+            }
+        }
+    }
+    
+    async fn handle_client_video(client_id: u64, data: &[u8], context: &Context, sender: &Sender<WSClientEvent>) {
+        let mut room_id = None;
+        if let Some(client) = context.clients.lock().await.get(&client_id) {
+            debug!("Client {} video frame {}", client_id, data.len());
+            room_id = Some(client.room.clone());
+        }
+        let mut send_futures = Vec::new();
+        if let Some(room_id) = room_id {
+            if let Some(room) = context.rooms.lock().await.get_mut(&room_id) {
+                let mut frame_clone = Vec::with_capacity(data.len());
+                frame_clone.extend_from_slice(data);
+                room.video.push(frame_clone);
+                for other_client_id in room.clients.iter().copied() {
+                    if other_client_id != client_id {
+                        let mut frame = Vec::with_capacity(data.len() + 1);
+                        frame.push(1);
+                        frame.extend_from_slice(data);
+                        let event = WSClientEvent {client_id: other_client_id, is_connected: true, text_message: None, binary_message: Some(frame)};
+                        send_futures.push(sender.send(event));
+                    }
+                }
+            }
+        }
+        for future in send_futures {
+            if let Err(e) = future.await {
+                error!("Failed to send video frame: {:?}", e);
             }
         }
     }
@@ -290,14 +354,17 @@ impl Easymund {
                 }
 
                 if let Some(bytes) = encoded {
-                    let event = WSClientEvent {client_id: *client_id, is_connected: true, text_message: None, binary_message: Some(bytes.clone())};
+                    let mut frame = Vec::with_capacity(bytes.len() + 1);
+                    frame.push(0);
+                    frame.extend_from_slice(&bytes);
+                    let event = WSClientEvent {client_id: *client_id, is_connected: true, text_message: None, binary_message: Some(frame)};
                     send_futures.push(sender.send(event));
                 }
             }
         }
         for future in send_futures {
             if let Err(e) = future.await {
-                error!("Failed to send: {:?}", e);
+                error!("Failed to send audio frame: {:?}", e);
             }
         }
     }

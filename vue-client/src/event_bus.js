@@ -23,7 +23,7 @@ class EventBus {
     fire(event) {
         const listener = this.listeners.get(event.type);
         if (listener) {
-            setTimeout(() => {listener(event.data)}, 50);
+            setTimeout(() => {listener(event.data)}, 10);
         }
     }
 }
