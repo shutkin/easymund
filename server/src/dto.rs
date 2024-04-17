@@ -23,7 +23,9 @@ pub struct EasymundEvent {
 pub struct Participant {
     pub id: Option<u64>,
     pub name: Option<String>,
-    pub is_muted: bool,
+    pub is_admin: Option<bool>,
+    pub is_muted: Option<bool>,
+    pub is_sharing: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -47,14 +49,15 @@ pub struct ChatMessage {
     pub time: String,
 }
 
-pub fn room(name: String, participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {
+pub fn room(self_id: u64, name: String, participants: Vec<Participant>, ambiences: Vec<Ambience>, ambience: Option<String>, chat: Vec<ChatMessage>) -> EasymundEvent {
+    let self_participant = participants.iter().find(|&participant| participant.id.unwrap_or_default() == self_id).cloned();
     EasymundEvent {
         event: String::from("room"),
         room_name: Some(name),
         participants: Some(participants),
         ambiences: Some(ambiences),
         ambience,
-        participant: None,
+        participant: self_participant,
         chat: Some(Chat {
             message: None,
             history: Some(chat),

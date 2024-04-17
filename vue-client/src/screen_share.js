@@ -31,7 +31,7 @@ class EasymundScreenShare {
             const options = { mimeType: mime_codecs };
             this.recorder = new MediaRecorder(this.record_stream, options);
             this.recorder.ondataavailable = this.on_video_data;
-            this.recorder.start(1000);
+            this.recorder.start(500);
         } catch (err) {
             console.error(err);
         }    
@@ -71,17 +71,7 @@ class EasymundScreenShare {
                     this.next_video_frame = null;
                 }
             }
-            this.play_source.on = (_) => {
-                console.log("Media source ended");
-                if (this.next_video_frame != null) {
-                    console.log("Append next video chunk");
-                    this.source_buffer.appendBuffer(this.next_video_frame);
-                    this.next_video_frame = null;
-                }
-            }
         } else if (this.source_buffer != null) {
-            // CHUNK_DEMUXER_ERROR_APPEND_FAILED: RunSegmentParserLoop: stream parsing failed. append_window_start=0 append_window_end=inf
-            console.log("Media source state: " + this.play_source.readyState);
             this.next_video_frame = data;
             this.source_buffer.appendBuffer(this.next_video_frame);
         }

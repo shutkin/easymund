@@ -6,6 +6,8 @@ export const room_state = reactive({
     participants: [],
     chat: [],
     ambience: "",
+    self_id: 0,
+    is_admin: false,
     is_muted: true,
     is_screen_sharing: false,
 })

@@ -43,8 +43,11 @@ set_ambience(room_state.ambience);
                     <div v-if="!room_state.is_muted" class="cls_icon_mic"></div>
                     <div v-else class="cls_icon_mic_muted"></div>
                 </button>
-                <button class="cls_button" @click="event_bus.fire({type: 'event_screen', data: {}})">Экран</button>
-                <div>
+                <button v-if="room_state.is_admin" class="cls_button" style="width: 6em;" @click="event_bus.fire({type: 'event_screen', data: {}})">
+                    <div v-if="!room_state.is_screen_sharing" class="cls_icon_screen_share"></div>
+                    <div v-else class="cls_icon_screen_share_stop"></div>
+                </button>
+                <div v-if="room_state.is_admin">
                     <span style="color: rgba(0, 0, 0, 0.75);">Фоновый звук:</span>
                     <select class="cls_select" v-model="ambience_select" @change="on_ambience">
                         <option v-for="(ambience) in room_state.ambiences" :key="ambience.id" :id="ambience.id">{{ambience.name}}</option>

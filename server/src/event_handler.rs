@@ -1,5 +1,3 @@
-use std::fs::File;
-use std::io::Write;
 use async_trait::async_trait;
 use chrono::Utc;
 use log::{debug, error, info};
@@ -26,10 +24,14 @@ struct JoinHandler {}
 impl Handler for JoinHandler {
     async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
                     -> Vec<ClientEvent> {
+        let mut first_in_room = false;
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
+            first_in_room = !room.clients.iter().any(|&other_client_id| client_id != other_client_id);
+        }
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             let participant = Participant {
                 name: event.participant.unwrap_or_default().name.unwrap_or(format!("{}", client_id)),
-                is_muted: true,
+                is_admin: first_in_room, is_muted: true, is_sharing: false,
             };
             info!("Client {}: {:?}", client_id, &participant);
             client.participant = Some(participant);
@@ -70,7 +72,7 @@ impl JoinHandler {
         let mut events = Vec::with_capacity(other_clients_ids.len() + 1);
         events.push(ClientEvent {
             client_id: new_client_id,
-            event: dto::room(room_name.unwrap_or_default(), participants.clone(), ambiences, ambience, chat),
+            event: dto::room(new_client_id, room_name.unwrap_or_default(), participants.clone(), ambiences, ambience, chat),
         });
         for client_id in other_clients_ids {
             events.push(ClientEvent {client_id, event: dto::participants(participants.clone())});
@@ -120,8 +122,15 @@ impl Handler for ParticipantHandler {
                     -> Vec<ClientEvent> {
         if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
             if let Some(participant) = &mut client.participant {
-                participant.is_muted = event.participant.unwrap_or_default().is_muted;
-                info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
+                let event_participant = event.participant.unwrap_or_default();
+                if participant.is_muted != event_participant.is_muted.unwrap_or_default() {
+                    participant.is_muted = event_participant.is_muted.unwrap_or_default();
+                    info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
+                }
+                if participant.is_sharing != event_participant.is_sharing.unwrap_or_default() {
+                    participant.is_sharing = event_participant.is_sharing.unwrap_or_default();
+                    info!("Participant {} is sharing screen: {}", &participant.name, participant.is_sharing);
+                }
             }
         }
         EventHandler::update_room_participants(room_id, context, None).await
@@ -167,7 +176,9 @@ fn participant_convert(client_id: u64, participant: &Participant) -> dto::Partic
     dto::Participant {
         id: Some(client_id),
         name: Some(participant.name.clone()),
-        is_muted: participant.is_muted,
+        is_admin: Some(participant.is_admin),
+        is_muted: Some(participant.is_muted),
+        is_sharing: Some(participant.is_sharing),
     }
 }
 
@@ -177,38 +188,6 @@ fn chat_msg_convert(message: &ChatMessage) -> dto::ChatMessage {
         from: message.from.clone(),
         time: format!("{}", message.time.format("%H:%M:%S")),
         text: message.text.clone(),
-    }
-}
-
-struct VideoStartHandler {}
-
-#[async_trait]
-impl Handler for VideoStartHandler {
-    async fn handle(&self, client_id: u64, room_id: &str, _event: dto::EasymundEvent, _context: &Context) -> Vec<ClientEvent> {
-        info!("Client {} started video stream in room {}", client_id, room_id);
-        Vec::new()
-    }
-}
-
-struct VideoStopHandler {}
-
-#[async_trait]
-impl Handler for VideoStopHandler {
-    async fn handle(&self, client_id: u64, room_id: &str, _event: dto::EasymundEvent, context: &Context) -> Vec<ClientEvent> {
-        info!("Client {} finished video stream in room {}", client_id, room_id);
-        if let Some(room) = context.rooms.lock().await.get(room_id) {
-            if !room.video.is_empty() {
-                let filename = format!("{}.webm", room_id);
-                if let Ok(mut file) = File::create(&filename) {
-                    for chunk in &room.video {
-                        if let Err(e) = file.write_all(chunk) {
-                            error!("Failed to save room video: {:?}", e);
-                        }
-                    }
-                }
-            }
-        }
-        Vec::new()
     }
 }
 
@@ -248,8 +227,6 @@ impl EventHandler {
             "ambience" => Some(&AmbienceHandler{}),
             "participant" => Some(&ParticipantHandler{}),
             "chat" => Some(&ChatHandler{}),
-            "video_start" => Some(&VideoStartHandler{}),
-            "video_stop" => Some(&VideoStopHandler{}),
             _ => None
         }
     }

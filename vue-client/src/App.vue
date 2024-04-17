@@ -103,16 +103,23 @@ function on_leave() {
     room_state.ambience = "";
 }
 
+function send_participant() {
+    const participant = {
+        is_muted: room_state.is_muted,
+        is_sharing: room_state.is_screen_sharing
+    };
+    socket.send_message({type: "json", data: {event: "participant", participant}});
+}
+
 async function on_screen() {
     if (!room_state.is_screen_sharing) {
         await screen_share.start_share();
         room_state.is_screen_sharing = true;
-        socket.send_message({type: "json", data: {event: "video_start"}});
     } else {
         screen_share.stop_share();
         room_state.is_screen_sharing = false;
-        socket.send_message({type: "json", data: {event: "video_stop"}});
     }
+    send_participant();
 }
 
 function on_ambience(data) {
@@ -126,7 +133,7 @@ function on_ambience(data) {
 function on_mic_switch() {
     room_state.is_muted = !room_state.is_muted;
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
-    socket.send_message({type: "json", data: {event: "participant", participant: {is_muted: room_state.is_muted}}});
+    send_participant();
 }
 
 function on_chat(data) {
@@ -145,6 +152,11 @@ function on_ws_video(data) {
 
 function on_ws_json(data) {
     if (data.event === "room") {
+        if (data.participant) {
+            console.log("myself: " + JSON.stringify(data.participant));
+            room_state.self_id = data.participant.id;
+            room_state.is_admin = data.participant.is_admin;
+        }
         room_state.name = data.room_name;
         room_state.participants = data.participants;
         room_state.ambiences = data.ambiences;

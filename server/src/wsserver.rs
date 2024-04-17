@@ -76,6 +76,11 @@ struct Context {
     senders: Arc<Mutex<HashMap<u64, Sender<WSCommand>>>>,
 }
 
+struct ContinuousData {
+    opcode: u8,
+    data: Vec<u8>,
+}
+
 impl WSServer {
     pub async fn start(addr: &String, events_channel: Sender<WSClientEvent>, command_channel: Receiver<WSClientEvent>) -> Result<(), Box<dyn Error>> {
         let tls_config = Arc::new(HTTPServer::create_tls_config()?);
@@ -95,6 +100,9 @@ impl WSServer {
                 error!("Failed to send command: {:?}", e);
             }
         });
+        
+        let continuous_data_map = HashMap::new();
+        let continuous_data = Arc::new(Mutex::new(continuous_data_map));
 
         loop {
             let (stream, addr) = listener.accept().await?;
@@ -111,8 +119,9 @@ impl WSServer {
                     let sender_clone = sender.clone();
                     let context_clone = context.clone();
                     let events_clone = events_channel.clone();
+                    let continuous_data_clone = continuous_data.clone();
                     tokio::spawn(async move {
-                        match WSServer::reader(&mut input, client_id, &sender_clone, &events_clone).await {
+                        match WSServer::reader(&mut input, client_id, &sender_clone, &events_clone, &continuous_data_clone).await {
                             Ok((code, msg)) => {
                                 info!("Client {:?} exit with code: {:?}, message: {:?}", &addr, code, msg);
                             }
@@ -161,8 +170,8 @@ impl WSServer {
         }
     }
 
-    async fn reader<T>(stream: &mut T, client_id: u64, client_sender: &Sender<WSCommand>,
-                       events_sender: &Sender<WSClientEvent>) -> Result<(Option<u16>, Option<String>), Box<dyn Error>>
+    async fn reader<T>(stream: &mut T, client_id: u64, client_sender: &Sender<WSCommand>, events_sender: &Sender<WSClientEvent>,
+                       continuous_data: &Arc<Mutex<HashMap<u64, ContinuousData>>>) -> Result<(Option<u16>, Option<String>), Box<dyn Error>>
         where T: AsyncReadExt + Unpin {
         let handshake = HTTPServer::read_http_req(stream).await?;
         debug!("Handshake: {:?}", &handshake);
@@ -174,33 +183,59 @@ impl WSServer {
             error!("Failed to channel connected event {:?}", e);
         }
         loop {
-            let (opcode, data) = WSServer::read_message(stream).await?;
-            if opcode == WSOpcode::Text as u8 {
-                if let Err(e) = events_sender.send(WSClientEvent::text(client_id, data)).await {
-                    error!("Failed to channel text event {:?}", e);
+            let (is_final, opcode, data) = WSServer::read_message(stream).await?;
+            if !is_final {
+                let mut mutex = continuous_data.lock().await;
+                if let Some(continuous) = mutex.get_mut(&client_id) {
+                    debug!("Client {} continue chunk length {}", client_id, data.len());
+                    continuous.data.extend_from_slice(&data);
+                } else {
+                    debug!("Client {} first chunk length {}", client_id, data.len());
+                    mutex.insert(client_id, ContinuousData {opcode, data});
                 }
-            } else if opcode == WSOpcode::Binary as u8 {
-                if let Err(e) = events_sender.send(WSClientEvent::binary(client_id, data)).await {
-                    error!("Failed to channel binary event {:?}", e);
+            } else {
+                let (opcode, data) = {
+                    let mut mutex = continuous_data.lock().await;
+                    if let Some(prev_data) = mutex.get(&client_id) {
+                        let opcode = prev_data.opcode;
+                        let mut full_data = Vec::with_capacity(prev_data.data.len() + data.len());
+                        full_data.extend_from_slice(&prev_data.data);
+                        full_data.extend_from_slice(&data);
+                        mutex.remove(&client_id);
+                        debug!("Client {} full data length {}", client_id, full_data.len());
+                        debug!("opcode {}", opcode);
+                        (opcode, full_data)
+                    } else {
+                        (opcode, data)
+                    }
+                };
+                if opcode == WSOpcode::Text as u8 {
+                    if let Err(e) = events_sender.send(WSClientEvent::text(client_id, data)).await {
+                        error!("Failed to channel text event {:?}", e);
+                    }
+                } else if opcode == WSOpcode::Binary as u8 {
+                    if let Err(e) = events_sender.send(WSClientEvent::binary(client_id, data)).await {
+                        error!("Failed to channel binary event {:?}", e);
+                    }
+                } else if opcode == WSOpcode::Close as u8 {
+                    let code = if data.len() > 1 { Some(data[0] as u16 + data[1] as u16) } else { None };
+                    let msg = if data.len() > 2 {
+                        let (_, msg) = data.split_at(2);
+                        Some(String::from_utf8(Vec::from(msg)).unwrap_or_default())
+                    } else { None };
+                    return Ok((code, msg));
+                } else if opcode == WSOpcode::Ping as u8 {
+                    let command = WSCommand { opcode: WSOpcode::Pong as i8, data: Vec::new() };
+                    client_sender.send(command).await?;
                 }
-            } else if opcode == WSOpcode::Close as u8 {
-                let code = if data.len() > 1 { Some(data[0] as u16 + data[1] as u16) } else { None };
-                let msg = if data.len() > 2 {
-                    let (_, msg) = data.split_at(2);
-                    Some(String::from_utf8(Vec::from(msg)).unwrap_or_default())
-                } else { None };
-                return Ok((code, msg));
-            } else if opcode == WSOpcode::Ping as u8 {
-                let command = WSCommand { opcode: WSOpcode::Pong as i8, data: Vec::new() };
-                client_sender.send(command).await?;
             }
         }
     }
 
-    async fn read_message<T>(stream: &mut T) -> Result<(u8, Vec<u8>), Box<dyn Error>>
+    async fn read_message<T>(stream: &mut T) -> Result<(bool, u8, Vec<u8>), Box<dyn Error>>
         where T: AsyncReadExt + Unpin {
         let header0 = stream.read_u8().await?;
-        let _fin = header0 & 0x80 > 0;
+        let fin = header0 & 0x80 > 0;
         let opcode = header0 & 0x0F;
         let header1 = stream.read_u8().await?;
         let mask = header1 & 0x80 > 0;
@@ -222,7 +257,7 @@ impl WSServer {
         for i in 0..payload.len() {
             payload[i] ^= mask[i % 4];
         }
-        Ok((opcode, payload))
+        Ok((fin, opcode, payload))
     }
 
     fn parse_handshake(handshake: &HTTPReq) -> Result<(String, String), WSError> {

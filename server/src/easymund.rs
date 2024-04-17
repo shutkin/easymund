@@ -53,7 +53,9 @@ impl Client {
 #[derive(Debug)]
 pub struct Participant {
     pub name: String,
+    pub is_admin: bool,
     pub is_muted: bool,
+    pub is_sharing: bool,
 }
 
 #[derive(Clone)]
@@ -70,7 +72,6 @@ pub struct Room {
     pub chat: Vec<ChatMessage>,
     pub ambience_id: String,
     pub ambience_position: usize,
-    pub video: Vec<Vec<u8>>,
 }
 
 impl Room {
@@ -81,7 +82,6 @@ impl Room {
             chat: Vec::new(),
             ambience_id: String::from(ambience_id),
             ambience_position: 0,
-            video: Vec::new(),
         }
     }
 }
@@ -198,7 +198,6 @@ impl Easymund {
         if room_exists {
             context.clients.lock().await.insert(client_id, Client::new(&room_id, easymund_audio, packet_size));
             context.rooms.lock().await.get_mut(room_id.as_str()).unwrap().clients.insert(client_id);
-            Easymund::send_video_to_new_client(client_id, &room_id, &context, &sender).await;
         } else {
             let event = dto::error_event(format!("Конференция {} не существует", &room_id));
             let json = serde_json::to_string(&event).unwrap();
@@ -210,30 +209,6 @@ impl Easymund {
             }).await {
                 error!("Failed to send error event to client {}: {:?}", client_id, e);
             }
-        }
-    }
-    
-    async fn send_video_to_new_client(client_id: u64, room_id: &str, context: &Context, sender: &Sender<WSClientEvent>) {
-        let mut frames = Vec::new();
-        if let Some(room) = context.rooms.lock().await.get(room_id) {
-            frames = room.video.clone();
-        }
-        if !frames.is_empty() {
-            let sender = sender.clone();
-            //let frames = Arc::new(frames);
-            task::spawn(async move {
-                for video_data in frames.as_slice() {
-                    time::sleep(Duration::from_millis(500)).await;
-                    let mut frame = Vec::with_capacity(video_data.len() + 1);
-                    frame.push(1);
-                    frame.extend_from_slice(video_data);
-                    info!("Send video {} frame to new client {}", frame.len(), client_id);
-                    let event = WSClientEvent {client_id, is_connected: true, text_message: None, binary_message: Some(frame)};
-                    if let Err(e) = sender.send(event).await {
-                        error!("Failed to send video to new client: {:?}", e);
-                    }
-                }
-            });
         }
     }
 
@@ -294,9 +269,6 @@ impl Easymund {
         let mut send_futures = Vec::new();
         if let Some(room_id) = room_id {
             if let Some(room) = context.rooms.lock().await.get_mut(&room_id) {
-                let mut frame_clone = Vec::with_capacity(data.len());
-                frame_clone.extend_from_slice(data);
-                room.video.push(frame_clone);
                 for other_client_id in room.clients.iter().copied() {
                     if other_client_id != client_id {
                         let mut frame = Vec::with_capacity(data.len() + 1);
