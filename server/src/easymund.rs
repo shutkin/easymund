@@ -34,6 +34,7 @@ pub struct Client {
     pub room: String,
     stream: Vec<f32>,
     stream_send_position: usize,
+    amplification: f64,
     codec: Codec,
     pub participant: Option<Participant>,
 }
@@ -44,6 +45,7 @@ impl Client {
             room: String::from(room_id),
             stream: vec![0.0; packet_size / 2],
             stream_send_position: 0,
+            amplification: 1.0,
             codec: easymun_audio.create_codec(packet_size).unwrap(),
             participant: None,
         }
@@ -263,7 +265,6 @@ impl Easymund {
     async fn handle_client_video(client_id: u64, data: &[u8], context: &Context, sender: &Sender<WSClientEvent>) {
         let mut room_id = None;
         if let Some(client) = context.clients.lock().await.get(&client_id) {
-            debug!("Client {} video frame {}", client_id, data.len());
             room_id = Some(client.room.clone());
         }
         let mut send_futures = Vec::new();
@@ -300,6 +301,10 @@ impl Easymund {
                     let client_chunk_length = if client_chunk_length > packet_size {packet_size} else {client_chunk_length};
                     let mut client_chunk = Vec::with_capacity(client_chunk_length);
                     client_chunk.extend_from_slice(&client.stream[client.stream_send_position .. (client.stream_send_position + client_chunk_length)]);
+                    //client.amplification = Easymund::modify_amplification(client.amplification, &client_chunk);
+                    for i in 0..client_chunk.len() {
+                        client_chunk[i] *= client.amplification as f32;
+                    }
                     client.stream_send_position += client_chunk_length;
                     clients_chunks.insert(*client_id, client_chunk);
                 }
@@ -308,7 +313,9 @@ impl Easymund {
             for client_id in &room.clients {
                 let mut channels = Vec::new();
                 if let Some(chunk) = &ambience_chunk {
-                    channels.push(chunk.as_slice());
+                    if !chunk.is_empty() {
+                        channels.push(chunk.as_slice());
+                    }
                 }
                 for (other_client_id, other_client_chunk) in &clients_chunks {
                     if *client_id != *other_client_id {
@@ -316,21 +323,22 @@ impl Easymund {
                     }
                 }
                 let chunk = Easymund::mix(&channels);
-
-                let mut encoded: Option<Vec<u8>> = None;
-                if let Some(client) = context.clients.lock().await.get_mut(client_id) {
-                    match client.codec.encode(vec![chunk.as_slice()].as_slice()) {
-                        Ok(encoded_res) => {encoded = Some(encoded_res);}
-                        Err(e) => {error!("Failed to encode: {:?}", e);}
+                if !chunk.is_empty() {
+                    let mut encoded: Option<Vec<u8>> = None;
+                    if let Some(client) = context.clients.lock().await.get_mut(client_id) {
+                        match client.codec.encode(vec![chunk.as_slice()].as_slice()) {
+                            Ok(encoded_res) => { encoded = Some(encoded_res); }
+                            Err(e) => { error!("Failed to encode: {:?}", e); }
+                        }
                     }
-                }
 
-                if let Some(bytes) = encoded {
-                    let mut frame = Vec::with_capacity(bytes.len() + 1);
-                    frame.push(0);
-                    frame.extend_from_slice(&bytes);
-                    let event = WSClientEvent {client_id: *client_id, is_connected: true, text_message: None, binary_message: Some(frame)};
-                    send_futures.push(sender.send(event));
+                    if let Some(bytes) = encoded {
+                        let mut frame = Vec::with_capacity(bytes.len() + 1);
+                        frame.push(0);
+                        frame.extend_from_slice(&bytes);
+                        let event = WSClientEvent { client_id: *client_id, is_connected: true, text_message: None, binary_message: Some(frame) };
+                        send_futures.push(sender.send(event));
+                    }
                 }
             }
         }
@@ -341,7 +349,31 @@ impl Easymund {
         }
     }
 
+    fn _modify_amplification(amplification: f64, chunk: &[f32]) -> f64 {
+        if chunk.is_empty() {
+            return amplification;
+        }
+        let mut average_level = 0.0;
+        for i in 0..chunk.len() {
+            average_level += chunk[i].abs() as f64;
+        }
+        let average_level = average_level / chunk.len() as f64;
+        if average_level < 0.005 {
+            return amplification;
+        }
+        let d = (0.0125 - amplification * average_level) * 0.125;
+        if d < 0.999 || d > 1.001 {
+            debug!("New amplification {}", amplification + d);
+            amplification + d
+        } else {
+            amplification
+        }
+    }
+
     fn room_ambience_chunk(room: &mut Room, samples_count: usize, background: &Vec<f32>) -> Vec<f32> {
+        if background.len() < samples_count {
+            return Vec::new();
+        }
         let mut chunk = Vec::with_capacity(samples_count);
         let mut pos = room.ambience_position;
         for _ in 0..samples_count {
@@ -353,6 +385,9 @@ impl Easymund {
     }
 
     fn mix(channels: &[&[f32]]) -> Vec<f32> {
+        if channels.is_empty() {
+            return Vec::new()
+        }
         let length = channels[0].len();
         let mut result = Vec::with_capacity(length);
         for i in 0..length {

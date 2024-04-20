@@ -43,7 +43,7 @@ impl Codec {
         let mut interleaved_data = Vec::with_capacity(self.channels as usize * self.packet_size as usize);
         for i in 0..self.packet_size as usize {
             for channel in data {
-                interleaved_data.push((channel[i] * i16::MAX as f32) as i32)
+                interleaved_data.push(if i < channel.len() { (channel[i] * i16::MAX as f32) as i32 } else { 0 });
             }
         }
         self.frame_buf.fill_interleaved(interleaved_data.as_slice())?;

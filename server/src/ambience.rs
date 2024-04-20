@@ -27,6 +27,12 @@ impl Ambience {
                 result.push(ambience);
             }
         }
+        result.sort_by(|a0, a1| a0.id.cmp(&a1.id));
+        result.push(Ambience {
+            id: String::from("0"),
+            name: String::from("тишина"),
+            data: Vec::new(),
+        });
         Ok(result)
     }
 

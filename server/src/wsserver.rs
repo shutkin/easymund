@@ -187,10 +187,8 @@ impl WSServer {
             if !is_final {
                 let mut mutex = continuous_data.lock().await;
                 if let Some(continuous) = mutex.get_mut(&client_id) {
-                    debug!("Client {} continue chunk length {}", client_id, data.len());
                     continuous.data.extend_from_slice(&data);
                 } else {
-                    debug!("Client {} first chunk length {}", client_id, data.len());
                     mutex.insert(client_id, ContinuousData {opcode, data});
                 }
             } else {
@@ -202,8 +200,6 @@ impl WSServer {
                         full_data.extend_from_slice(&prev_data.data);
                         full_data.extend_from_slice(&data);
                         mutex.remove(&client_id);
-                        debug!("Client {} full data length {}", client_id, full_data.len());
-                        debug!("opcode {}", opcode);
                         (opcode, full_data)
                     } else {
                         (opcode, data)
