@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 
 const props = defineProps(['participant'])
-const mic_state = ref(props.participant.is_muted);
+const mic_state = ref(!props.participant.is_muted);
 const screen_state = ref(props.participant.is_sharing);
 const admin_state = ref(props.participant.is_admin);
 watch(

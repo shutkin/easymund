@@ -70,7 +70,7 @@ set_ambience(room_state.ambience);
     .cls_room_cnt {display: grid; grid-template-rows: 2.5em auto 1fr 3.5em;}
     .cls_room_title {text-align: center;}
     .cls_room_participants {padding: 0.5em; white-space: nowrap; overflow: auto;}
-    .cls_room_screen {border: solid 1px #ddd; margin: 0.5em;}
+    .cls_room_screen {margin: 0.5em;}
     .cls_room_controls {
         padding: 0.5em;
         display: flex; flex-direction: row; gap: 0.5em;

@@ -20,7 +20,8 @@ class EasymundScreenShare {
                 video: {
                     displaySurface: "window",
                 },
-                audio: false
+                audio: false,
+                selfBrowserSurface: "exclude"
             };
             this.record_stream = await navigator.mediaDevices.getDisplayMedia(display_options);
             video_element.srcObject = this.record_stream;
