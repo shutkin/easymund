@@ -216,11 +216,17 @@ impl Easymund {
 
     async fn handle_client_disconnect(client_id: u64, context: &Context, sender: &Sender<WSClientEvent>) {
         info!("Client {} disconnected", client_id);
-        let mut room_name = None;
+        let mut room_id = None;
+        let mut new_admin = None;
         if let Some(client) = context.clients.lock().await.remove(&client_id) {
             if let Some(room) = context.rooms.lock().await.get_mut(client.room.as_str()) {
                 room.clients.remove(&client_id);
-                room_name = Some(client.room.clone());
+                room_id = Some(client.room.clone());
+                if let Some(participant) = &client.participant {
+                    if participant.is_admin {
+                        new_admin = room.clients.iter().copied().min();
+                    }
+                }
             }
 
             let wav_data = client.stream.iter().map(|f| (f * 32768.0) as i16).collect::<Vec<i16>>();
@@ -234,9 +240,19 @@ impl Easymund {
                 }
             }
         }
+        
+        if let Some(new_admin) = new_admin {
+            if let Some(client) = context.clients.lock().await.get_mut(&new_admin) {
+                if let Some(participant) = &mut client.participant {
+                    participant.is_admin = true;
+                } else {
+                    error!("Unregistered client {} can't be new admin in room {:?}", new_admin, &room_id);
+                }
+            }
+        }
 
-        if let Some(room_name) = room_name {
-            EventHandler::handle_room_update(client_id, &room_name, context, sender).await;
+        if let Some(room_id) = room_id {
+            EventHandler::handle_room_update(client_id, &room_id, context, sender).await;
         }
     }
 

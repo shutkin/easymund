@@ -120,20 +120,55 @@ struct ParticipantHandler {}
 impl Handler for ParticipantHandler {
     async fn handle(&self, client_id: u64, room_id: &str, event: dto::EasymundEvent, context: &Context)
                     -> Vec<ClientEvent> {
-        if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
+        let event_participant = event.participant.unwrap_or_default();
+        let id = event_participant.id.unwrap_or(client_id);
+        let mut change_admin = false;
+        debug!("Target client id {}", id);
+        if let Some(client) = context.clients.lock().await.get_mut(&id) {
             if let Some(participant) = &mut client.participant {
-                let event_participant = event.participant.unwrap_or_default();
-                if participant.is_muted != event_participant.is_muted.unwrap_or_default() {
-                    participant.is_muted = event_participant.is_muted.unwrap_or_default();
-                    info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
+                debug!("Target current status: {:?}", participant);
+                if let Some(is_admin) = event_participant.is_admin {
+                    change_admin = is_admin && !participant.is_admin
                 }
-                if participant.is_sharing != event_participant.is_sharing.unwrap_or_default() {
-                    participant.is_sharing = event_participant.is_sharing.unwrap_or_default();
-                    info!("Participant {} is sharing screen: {}", &participant.name, participant.is_sharing);
+                if let Some(is_muted) = event_participant.is_muted {
+                    if participant.is_muted != is_muted {
+                        participant.is_muted = is_muted;
+                        info!("Participant {} is muted: {}", &participant.name, participant.is_muted);
+                    }
+                }
+                if let Some(is_sharing) = event_participant.is_sharing {
+                    if participant.is_sharing != is_sharing {
+                        participant.is_sharing = is_sharing;
+                        info!("Participant {} is sharing screen: {}", &participant.name, participant.is_sharing);
+                    }
                 }
             }
         }
+        if change_admin {
+            ParticipantHandler::change_room_admin(id, room_id, context).await;
+        }
         EventHandler::update_room_participants(room_id, context, None).await
+    }
+}
+
+impl ParticipantHandler {
+    async fn change_room_admin(new_admin_id: u64, room_id: &str, context: &Context) {
+        let mut room_clients = Vec::new();
+        if let Some(room) = context.rooms.lock().await.get(room_id) {
+            for client_id in &room.clients {
+                room_clients.push(*client_id);
+            }
+        }
+        for client_id in &room_clients {
+            if let Some(client) = context.clients.lock().await.get_mut(client_id) {
+                if let Some(participant) = &mut client.participant {
+                    participant.is_admin = new_admin_id == *client_id;
+                    if participant.is_admin {
+                        info!("Participant {} is now admin", &participant.name);
+                    }
+                }
+            }
+        }
     }
 }
 

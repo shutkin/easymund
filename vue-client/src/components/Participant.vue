@@ -1,29 +1,34 @@
 <script setup>
 import { ref, watch } from 'vue';
+import { room_state } from '../room_state';
+import { event_bus } from '../event_bus';
 
-const props = defineProps(['participant'])
-const mic_state = ref(!props.participant.is_muted);
-const screen_state = ref(props.participant.is_sharing);
-const admin_state = ref(props.participant.is_admin);
+const props = defineProps(['participant_id']);
+const participant = ref(room_state.participants.find((p) => p.id == props.participant_id));
 watch(
-    () => props.participant,
-    (p) => {
-        admin_state.value = p.is_admin;
-        mic_state.value = !p.is_muted;
-        screen_state.value = p.is_sharing;
-    },
-    {deep: true}
+    () => room_state.participants,
+    (participants) => {
+        participant.value = participants.find((p) => p.id == props.participant_id);
+    }
 );
 </script>
 
 <template>
     <div class="cls_room_participant">
         <div class="cls_participant_info">{{ participant.name }}</div>
-        <div class="cls_participant_ctrl">
-            <div v-if="admin_state" style="width: 1.5em; text-align: center; color: white;">A</div>
-            <div v-if="mic_state" class="cls_icon_mic" style="width: 1.5em; margin: 0.25em;"></div>
-            <div v-if="!mic_state" class="cls_icon_mic_muted" style="width: 1.5em; margin: 0.25em;"></div>
-            <div v-if="screen_state" class="cls_icon_screen_share" style="width: 1.5em; margin: 0.25em;"></div>
+        <div class="cls_participant_status">
+            <div v-if="participant.is_admin" style="width: 1.5em; text-align: center; color: white;">A</div>
+            <div v-if="!participant.is_muted" class="cls_icon_mic" style="width: 1.5em; margin: 0.25em;"></div>
+            <div v-if="participant.is_muted" class="cls_icon_mic_muted" style="width: 1.5em; margin: 0.25em;"></div>
+            <div v-if="participant.is_sharing" class="cls_icon_screen_share" style="width: 1.5em; margin: 0.25em;"></div>
+        </div>
+        <div v-if="room_state.is_admin && participant.id != room_state.self_id" class="cls_participant_ctrl">
+            <button class="cls_button"
+                @click="event_bus.fire({type: 'event_make_admin', data: props.participant_id})"
+                style="width: 6em; height: 2em; margin: 0.25em;">Set admin</button>
+            <button v-if="!participant.is_muted" class="cls_button"
+                @click="event_bus.fire({type: 'event_make_muted', data: props.participant_id})"
+                style="width: 4em; height: 2em; margin: 0.25em;">Mute</button>
         </div>
     </div>
 </template>
@@ -31,6 +36,7 @@ watch(
 <style>
     .cls_room_participant {
         height: fit-content; width: fit-content;
+        margin: 0.25em;
         display: inline-block;
         border: 1px solid #ddd;
         border-radius: 5px;
@@ -43,8 +49,11 @@ watch(
         padding: 0.5em;
         height: fit-content; width: fit-content;
     }
-    .cls_participant_ctrl {
-        background-color: #365194;
+    .cls_participant_status {
+        background-color: #add8e7;
         display: flex; flex-direction: row;
+    }
+    .cls_participant_ctrl {
+        background-color: #f5f5dd;
     }
 </style>

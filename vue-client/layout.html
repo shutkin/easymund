@@ -86,12 +86,16 @@
         .cls_room_participant:hover {
             background-color: #f0f0f0;
         }
+        .cls_participant_ctrl {
+            background-color: #f5f5dd;
+            padding: 0.25em;
+        }
         .cls_participant_info {
             padding: 0.5em;
             height: fit-content; width: fit-content;
         }
-        .cls_participant_ctrl {
-            background-color: #365194;
+        .cls_participant_status {
+            background-color: #add8e7;
             display: flex; flex-direction: row;
         }
         .cls_room_controls {
@@ -205,21 +209,27 @@
                 <div class="cls_room_participants">
                     <div class="cls_room_participant">
                         <div class="cls_participant_info">User 0</div>
-                        <div class="cls_participant_ctrl">
+                        <div class="cls_participant_status">
                             <div class="cls_icon_mic" style="width: 1.5em; margin: 0.25em;"></div>
                             <div class="cls_icon_screen_share" style="width: 1.5em; margin: 0.25em;"></div>
                         </div>
                     </div>
                     <div class="cls_room_participant">
                         <div class="cls_participant_info">User 0</div>
+                        <div class="cls_participant_status">
+                            <div class="cls_icon_mic_muted" style="width: 1.5em; margin: 0.25em;"></div>
+                        </div>
                         <div class="cls_participant_ctrl">
-                            <div class="cls_icon_mic_muted"></div>
+                            <button class="cls_button" style="width: 2em; height: 2em;">A</button>
                         </div>
                     </div>
                     <div class="cls_room_participant">
                         <div class="cls_participant_info">User 0</div>
+                        <div class="cls_participant_status">
+                            <div class="cls_icon_mic_muted" style="width: 1.5em; margin: 0.25em;"></div>
+                        </div>
                         <div class="cls_participant_ctrl">
-                            <div class="cls_icon_mic_muted"></div>
+                            <button class="cls_button" style="width: 2em; height: 2em;">A</button>
                         </div>
                     </div>
                 </div>

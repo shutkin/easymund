@@ -33,7 +33,7 @@ set_ambience(room_state.ambience);
                 <h3>{{ room_state.name }}</h3>
             </div>
             <div class="cls_room_participants">
-                <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant="participant"/>
+                <Participant v-for="(participant) in room_state.participants" :key="participant.id" :participant_id="participant.id"/>
             </div>
             <div class="cls_room_screen">
                 <video id="video" autoplay="autoplay" style="width: 100%; height: 100%;"></video>
@@ -69,7 +69,7 @@ set_ambience(room_state.ambience);
     }
     .cls_room_cnt {display: grid; grid-template-rows: 2.5em auto 1fr 3.5em;}
     .cls_room_title {text-align: center;}
-    .cls_room_participants {padding: 0.5em; white-space: nowrap; overflow: auto;}
+    .cls_room_participants {white-space: nowrap; overflow: auto;}
     .cls_room_screen {margin: 0.5em;}
     .cls_room_controls {
         padding: 0.5em;

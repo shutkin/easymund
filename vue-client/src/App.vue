@@ -76,6 +76,8 @@ async function start(user_name) {
     event_bus.listen("event_ambience", on_ambience);
     event_bus.listen("event_mute", on_mic_switch);
     event_bus.listen("event_leave", on_leave);
+    event_bus.listen("event_make_admin", on_make_admin);
+    event_bus.listen("event_make_muted", on_make_muted);
 
     audio = new EasymundAudio();
     await audio.init();
@@ -103,8 +105,9 @@ function on_leave() {
     room_state.ambience = "";
 }
 
-function send_participant() {
+function send_self_participant() {
     const participant = {
+        id: room_state.self_id,
         is_muted: room_state.is_muted,
         is_sharing: room_state.is_screen_sharing
     };
@@ -119,7 +122,7 @@ async function on_screen() {
         screen_share.stop_share();
         room_state.is_screen_sharing = false;
     }
-    send_participant();
+    send_self_participant();
 }
 
 function on_ambience(data) {
@@ -133,11 +136,27 @@ function on_ambience(data) {
 function on_mic_switch() {
     room_state.is_muted = !room_state.is_muted;
     audio.send_message({type: "audio_mute", value: room_state.is_muted});
-    send_participant();
+    send_self_participant();
 }
 
 function on_chat(data) {
     socket.send_message({type: "json", data: {event: "chat", chat: {message: data}}});
+}
+
+function on_make_admin(participant_id) {
+    const participant = {
+        id: participant_id,
+        is_admin: true,
+    };
+    socket.send_message({type: "json", data: {event: "participant", participant}});
+}
+
+function on_make_muted(participant_id) {
+    const participant = {
+        id: participant_id,
+        is_muted: true,
+    };
+    socket.send_message({type: "json", data: {event: "participant", participant}});
 }
 
 function on_ws_audio(data) {
@@ -165,6 +184,15 @@ function on_ws_json(data) {
         started.value = true;
     } else if (data.event === "participants") {
         room_state.participants = data.participants;
+        const myself = data.participants.find((p) => p.id == room_state.self_id);
+        if (myself) {
+            if (room_state.is_muted != myself.is_muted) {
+                console.log("Force set muted state to " + myself.is_muted)
+                audio.send_message({type: "audio_mute", value: myself.is_muted});
+                room_state.is_muted = myself.is_muted;
+            }
+            room_state.is_admin = myself.is_admin;
+        }
     } else if (data.event === "ambience") {
         room_state.ambience = data.ambience;
     } else if (data.event === "chat") {
