@@ -24,6 +24,7 @@ use crate::httpserver::PostHandler;
 use crate::wsserver::WSClientEvent;
 
 const SAMPLE_RATE: usize = 44100;
+const TALKING_LEVEL: f32 = 0.025;
 
 pub struct Easymund {
     packet_size: usize,
@@ -34,7 +35,8 @@ pub struct Client {
     pub room: String,
     stream: Vec<f32>,
     stream_send_position: usize,
-    amplification: f64,
+    is_talking: bool,
+    silence_counter: u32,
     codec: Codec,
     pub participant: Option<Participant>,
 }
@@ -45,7 +47,8 @@ impl Client {
             room: String::from(room_id),
             stream: vec![0.0; packet_size / 2],
             stream_send_position: 0,
-            amplification: 1.0,
+            is_talking: false,
+            silence_counter: 0,
             codec: easymun_audio.create_codec(packet_size).unwrap(),
             participant: None,
         }
@@ -69,6 +72,7 @@ pub struct ChatMessage {
 }
 
 pub struct Room {
+    pub id: String,
     pub name: String,
     pub clients: HashSet<u64>,
     pub chat: Vec<ChatMessage>,
@@ -77,8 +81,9 @@ pub struct Room {
 }
 
 impl Room {
-    fn new(name: String, ambience_id: &str) -> Room {
+    fn new(id: String, name: String, ambience_id: &str) -> Room {
         Room {
+            id,
             name,
             clients: HashSet::new(),
             chat: Vec::new(),
@@ -131,7 +136,7 @@ impl EasymundPostHandler {
     async fn handle_create(&self, req_body: &[u8]) -> Result<String, Box<dyn Error>> {
         let req: RoomCreatePostReq = serde_json::from_slice(req_body)?;
         let room_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 12);
-        let room = Room::new(req.name, &self.context.ambiences[0].id);
+        let room = Room::new(room_id.clone(), req.name, &self.context.ambiences[0].id);
         info!("Create room {} with id {}", &room.name, &room_id);
         self.context.rooms.lock().await.insert(room_id.clone(), room);
         let resp = serde_json::to_string(&RoomCreatePostResp { room_id })?;
@@ -310,6 +315,8 @@ impl Easymund {
             let ambience_chunk = context.ambiences.iter().find(|a| a.id == room.ambience_id)
                 .map(|ambience| Easymund::room_ambience_chunk(room, packet_size, &ambience.data));
 
+            let mut talking_clients = Vec::new();
+            let mut talking_clients_changes = false;
             let mut clients_chunks = HashMap::new();
             for client_id in &room.clients {
                 if let Some(client) = context.clients.lock().await.get_mut(client_id) {
@@ -317,14 +324,25 @@ impl Easymund {
                     let client_chunk_length = if client_chunk_length > packet_size {packet_size} else {client_chunk_length};
                     let mut client_chunk = Vec::with_capacity(client_chunk_length);
                     client_chunk.extend_from_slice(&client.stream[client.stream_send_position .. (client.stream_send_position + client_chunk_length)]);
-                    //client.amplification = Easymund::modify_amplification(client.amplification, &client_chunk);
-                    for i in 0..client_chunk.len() {
-                        client_chunk[i] *= client.amplification as f32;
+                    if Easymund::check_talking_status(client, &client_chunk) {
+                        talking_clients_changes = true;
+                    }
+                    if client.is_talking {
+                        talking_clients.push(*client_id);
                     }
                     client.stream_send_position += client_chunk_length;
                     clients_chunks.insert(*client_id, client_chunk);
                 }
             }
+            let talking_clients_event_json = if talking_clients_changes {
+                match serde_json::to_string(&dto::talking(talking_clients)) {
+                    Ok(json) => Some(json),
+                    Err(e) => {
+                        error!("Failed to serialize talking event: {:?}", e);
+                        None
+                    }
+                }
+            } else { None };
 
             for client_id in &room.clients {
                 let mut channels = Vec::new();
@@ -356,6 +374,10 @@ impl Easymund {
                         send_futures.push(sender.send(event));
                     }
                 }
+                if let Some(json) = talking_clients_event_json.clone() {
+                    let event = WSClientEvent { client_id: *client_id, is_connected: true, text_message: Some(json), binary_message: None };
+                    send_futures.push(sender.send(event));
+                }
             }
         }
         for future in send_futures {
@@ -364,25 +386,29 @@ impl Easymund {
             }
         }
     }
-
-    fn _modify_amplification(amplification: f64, chunk: &[f32]) -> f64 {
-        if chunk.is_empty() {
-            return amplification;
-        }
-        let mut average_level = 0.0;
-        for i in 0..chunk.len() {
-            average_level += chunk[i].abs() as f64;
-        }
-        let average_level = average_level / chunk.len() as f64;
-        if average_level < 0.005 {
-            return amplification;
-        }
-        let d = (0.0125 - amplification * average_level) * 0.125;
-        if d < 0.999 || d > 1.001 {
-            debug!("New amplification {}", amplification + d);
-            amplification + d
+    
+    fn check_talking_status(client: &mut Client, chunk: &[f32]) -> bool {
+        let average_level = chunk.iter()
+            .map(|v| v.abs())
+            .reduce(|acc, v| acc + v).unwrap_or_default() / (chunk.len() as f32 + 1.0);
+        if average_level > TALKING_LEVEL {
+            if !client.is_talking {
+                client.is_talking = true;
+                client.silence_counter = 0;
+                true
+            } else {
+                false
+            }
+        } else if client.is_talking {
+            client.silence_counter += 1;
+            if client.silence_counter >= 5 {
+                client.is_talking = false;
+                true
+            } else {
+                false
+            }
         } else {
-            amplification
+            false
         }
     }
 

@@ -197,6 +197,8 @@ function on_ws_json(data) {
         room_state.ambience = data.ambience;
     } else if (data.event === "chat") {
         room_state.chat.push(data.chat.history.pop());
+    } else if (data.event === "talking") {
+        room_state.is_talking = data.is_talking;
     } else if (data.event === "error") {
         if (!is_error) {
             is_error = true;

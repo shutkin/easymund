@@ -11,10 +11,18 @@ watch(
         participant.value = participants.find((p) => p.id == props.participant_id);
     }
 );
+const is_participant_talking = ref(false);
+watch(
+    () => room_state.is_talking,
+    (is_talking) => {
+        console.log("talking clinets: " + is_talking + ", self id: " + participant.value.id);
+        is_participant_talking.value = is_talking.includes(participant.value.id);
+    }
+);
 </script>
 
 <template>
-    <div class="cls_room_participant">
+    <div class="cls_room_participant" :style="is_participant_talking ? 'box-shadow: 0 0 0.25em rgba(0, 0, 0, 0.5);' : 'box-shadow: none;'">
         <div class="cls_participant_info">{{ participant.name }}</div>
         <div class="cls_participant_status">
             <div v-if="participant.is_admin" style="width: 1.5em; text-align: center; color: white;">A</div>
@@ -25,10 +33,10 @@ watch(
         <div v-if="room_state.is_admin && participant.id != room_state.self_id" class="cls_participant_ctrl">
             <button class="cls_button"
                 @click="event_bus.fire({type: 'event_make_admin', data: props.participant_id})"
-                style="width: 6em; height: 2em; margin: 0.25em;">Set admin</button>
+                style="width: fit-content; height: 2em; margin: 0.25em;">Дать админа</button>
             <button v-if="!participant.is_muted" class="cls_button"
                 @click="event_bus.fire({type: 'event_make_muted', data: props.participant_id})"
-                style="width: 4em; height: 2em; margin: 0.25em;">Mute</button>
+                style="width: fit-content; height: 2em; margin: 0.25em;">Заглушить</button>
         </div>
     </div>
 </template>

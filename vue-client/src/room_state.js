@@ -10,4 +10,5 @@ export const room_state = reactive({
     is_admin: false,
     is_muted: true,
     is_screen_sharing: false,
+    is_talking: []
 })

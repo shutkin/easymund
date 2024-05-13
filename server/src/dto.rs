@@ -12,6 +12,8 @@ pub struct EasymundEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub participants: Option<Vec<Participant>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_talking: Option<Vec<u64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub chat: Option<Chat>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ambiences: Option<Vec<Ambience>>,
@@ -62,6 +64,7 @@ pub fn room(self_id: u64, name: String, participants: Vec<Participant>, ambience
             message: None,
             history: Some(chat),
         }),
+        is_talking: None,
         error: None,
     }
 }
@@ -75,6 +78,7 @@ pub fn participants(participants: Vec<Participant>) -> EasymundEvent {
         ambience: None,
         participant: None,
         chat: None,
+        is_talking: None,
         error: None,
     }
 }
@@ -88,6 +92,7 @@ pub fn ambience(ambience: String) -> EasymundEvent {
         ambience: Some(ambience),
         participant: None,
         chat: None,
+        is_talking: None,
         error: None,
     }
 }
@@ -101,6 +106,7 @@ pub fn leave() -> EasymundEvent {
         ambience: None,
         participant: None,
         chat: None,
+        is_talking: None,
         error: None,
     }
 }
@@ -117,6 +123,21 @@ pub fn chat_message(chat_message: ChatMessage) -> EasymundEvent {
             message: None,
             history: Some(vec![chat_message]),
         }),
+        is_talking: None,
+        error: None,
+    }
+}
+
+pub fn talking(clients_ids: Vec<u64>) -> EasymundEvent {
+    EasymundEvent {
+        event: String::from("talking"),
+        room_name: None,
+        participants: None,
+        ambiences: None,
+        ambience: None,
+        participant: None,
+        chat: None,
+        is_talking: Some(clients_ids),
         error: None,
     }
 }
@@ -130,6 +151,7 @@ pub fn error_event(error: String) -> EasymundEvent {
         ambience: None,
         participant: None,
         chat: None,
+        is_talking: None,
         error: Some(error),
     }
 }
