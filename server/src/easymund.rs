@@ -345,34 +345,8 @@ impl Easymund {
             } else { None };
 
             for client_id in &room.clients {
-                let mut channels = Vec::new();
-                if let Some(chunk) = &ambience_chunk {
-                    if !chunk.is_empty() {
-                        channels.push(chunk.as_slice());
-                    }
-                }
-                for (other_client_id, other_client_chunk) in &clients_chunks {
-                    if *client_id != *other_client_id {
-                        channels.push(other_client_chunk);
-                    }
-                }
-                let chunk = Easymund::mix(&channels);
-                if !chunk.is_empty() {
-                    let mut encoded: Option<Vec<u8>> = None;
-                    if let Some(client) = context.clients.lock().await.get_mut(client_id) {
-                        match client.codec.encode(vec![chunk.as_slice()].as_slice()) {
-                            Ok(encoded_res) => { encoded = Some(encoded_res); }
-                            Err(e) => { error!("Failed to encode: {:?}", e); }
-                        }
-                    }
-
-                    if let Some(bytes) = encoded {
-                        let mut frame = Vec::with_capacity(bytes.len() + 1);
-                        frame.push(0);
-                        frame.extend_from_slice(&bytes);
-                        let event = WSClientEvent { client_id: *client_id, is_connected: true, text_message: None, binary_message: Some(frame) };
-                        send_futures.push(sender.send(event));
-                    }
+                if let Some(event) = Easymund::create_client_audio_event(*client_id, &ambience_chunk, &clients_chunks, &context).await {
+                    send_futures.push(sender.send(event));
                 }
                 if let Some(json) = talking_clients_event_json.clone() {
                     let event = WSClientEvent { client_id: *client_id, is_connected: true, text_message: Some(json), binary_message: None };
@@ -385,6 +359,38 @@ impl Easymund {
                 error!("Failed to send audio frame: {:?}", e);
             }
         }
+    }
+    
+    async fn create_client_audio_event(client_id: u64, ambience_chunk: &Option<Vec<f32>>,
+                                  clients_chunks: &HashMap<u64, Vec<f32>>, context: &Context) -> Option<WSClientEvent> {
+        let mut channels = Vec::new();
+        if let Some(chunk) = ambience_chunk {
+            if !chunk.is_empty() {
+                channels.push(chunk.as_slice());
+            }
+        }
+        for (other_client_id, other_client_chunk) in clients_chunks {
+            if client_id != *other_client_id {
+                channels.push(other_client_chunk);
+            }
+        }
+        let chunk = Easymund::mix(&channels);
+        if !chunk.is_empty() {
+            let mut encoded: Option<Vec<u8>> = None;
+            if let Some(client) = context.clients.lock().await.get_mut(&client_id) {
+                match client.codec.encode(vec![chunk.as_slice()].as_slice()) {
+                    Ok(encoded_res) => { encoded = Some(encoded_res); }
+                    Err(e) => { error!("Failed to encode: {:?}", e); }
+                }
+            }
+
+            if let Some(bytes) = encoded {
+                let mut frame = Vec::with_capacity(bytes.len() + 1);
+                frame.push(0);
+                frame.extend_from_slice(&bytes);
+                Some(WSClientEvent { client_id, is_connected: true, text_message: None, binary_message: Some(frame) })
+            } else { None }
+        } else { None }
     }
     
     fn check_talking_status(client: &mut Client, chunk: &[f32]) -> bool {
@@ -412,7 +418,7 @@ impl Easymund {
         }
     }
 
-    fn room_ambience_chunk(room: &mut Room, samples_count: usize, background: &Vec<f32>) -> Vec<f32> {
+    fn room_ambience_chunk(room: &mut Room, samples_count: usize, background: &[f32]) -> Vec<f32> {
         if background.len() < samples_count {
             return Vec::new();
         }
